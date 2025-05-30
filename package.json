@@ -1,5 +1,5 @@
 {
-  "name": "@sigle/sign-in-with-stacks",
+  "name": "sign-in-with-stacks",
   "version": "0.0.0",
   "packageManager": "pnpm@10.11.0",
   "type": "module",
@@ -18,9 +18,11 @@
   "scripts": {
     "build": "tsdown",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "pnpm publish -r"
   },
   "devDependencies": {
+    "@changesets/cli": "2.29.4",
     "@stacks/encryption": "7.0.6",
     "@stacks/network": "7.0.2",
     "@stacks/transactions": "7.0.6",
