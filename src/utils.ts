@@ -1,7 +1,7 @@
 import { validateStacksAddress } from "@stacks/transactions";
 import { InvalidAddressError } from "./errors/address.js";
 
-export function isUri(value: string) {
+export function isUri(value: string): boolean | string {
   // based on https://github.com/ogt/valid-url
 
   // check for illegal characters
@@ -47,7 +47,7 @@ export function isUri(value: string) {
   return out;
 }
 
-function splitUri(value: string) {
+function splitUri(value: string): RegExpMatchArray {
   return value.match(
     /(?:([^:\/?#]+):)?(?:\/\/([^\/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?/,
   )!;
