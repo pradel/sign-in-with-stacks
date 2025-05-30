@@ -15,7 +15,7 @@ let errorConfig: ErrorConfig = {
       : undefined,
 };
 
-export function setErrorConfig(config: ErrorConfig) {
+export function setErrorConfig(config: ErrorConfig): void {
   errorConfig = config;
 }
 
