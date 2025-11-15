@@ -2,7 +2,7 @@
   "name": "sign-in-with-stacks",
   "version": "0.1.3",
   "license": "MIT",
-  "repository": "pradel/clarity-abitype",
+  "repository": "pradel/sign-in-with-stacks",
   "funding": "https://github.com/sponsors/pradel",
   "packageManager": "pnpm@10.22.0",
   "type": "module",
