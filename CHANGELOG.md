@@ -1,5 +1,12 @@
 # sign-in-with-stacks
 
+## 0.1.3
+
+### Patch Changes
+
+- a0d333f: Setup trusted publishing for npm
+- e5d774b: Setup publint when building
+
 ## 0.1.2
 
 ### Patch Changes
