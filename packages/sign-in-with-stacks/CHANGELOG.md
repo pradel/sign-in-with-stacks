@@ -1,5 +1,11 @@
 # sign-in-with-stacks
 
+## 0.1.5
+
+### Patch Changes
+
+- [#10](https://github.com/pradel/sign-in-with-stacks/pull/10) [`83a8f5f`](https://github.com/pradel/sign-in-with-stacks/commit/83a8f5fed63744cf61c3fe4ed4ecf68479d17572) Thanks [@pradel](https://github.com/pradel)! - Setup monorepo
+
 ## 0.1.4
 
 ### Patch Changes
