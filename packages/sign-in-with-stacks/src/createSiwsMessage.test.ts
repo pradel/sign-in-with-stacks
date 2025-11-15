@@ -245,17 +245,15 @@ test("parameters: resources", () => {
 });
 
 test("behavior: invalid address", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, address: "0xfoobarbaz" }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, address: "0xfoobarbaz" }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [InvalidAddressError: Address "0xfoobarbaz" is invalid.]
   `);
 });
 
 test("behavior: invalid chainId", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, chainId: 1.1 }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, chainId: 1.1 }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "chainId".
     - Chain ID must be a SIP-005 chain ID.
     - See https://github.com/stacksgov/sips/blob/main/sips/sip-005/sip-005-blocks-and-transactions.md
@@ -264,9 +262,8 @@ test("behavior: invalid chainId", () => {
 });
 
 test("behavior: invalid domain", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, domain: "#foo" }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, domain: "#foo" }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "domain".
     - Domain must be an RFC 3986 authority.
     - See https://www.rfc-editor.org/rfc/rfc3986
@@ -275,9 +272,8 @@ test("behavior: invalid domain", () => {
 });
 
 test("behavior: invalid nonce", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, nonce: "#foo" }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, nonce: "#foo" }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "nonce".
     - Nonce must be at least 8 characters.
     - Nonce must be alphanumeric.
@@ -286,9 +282,8 @@ test("behavior: invalid nonce", () => {
 });
 
 test("behavior: invalid uri", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, uri: "#foo" }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, uri: "#foo" }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "uri".
     - URI must be a RFC 3986 URI referring to the resource that is the subject of the signing.
     - See https://www.rfc-editor.org/rfc/rfc3986
@@ -308,9 +303,8 @@ test("behavior: invalid version", () => {
 });
 
 test("behavior: invalid scheme", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, scheme: "foo_bar" }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, scheme: "foo_bar" }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "scheme".
     - Scheme must be an RFC 3986 URI scheme.
     - See https://www.rfc-editor.org/rfc/rfc3986#section-3.1
@@ -319,9 +313,8 @@ test("behavior: invalid scheme", () => {
 });
 
 test("behavior: invalid statement", () => {
-  expect(() =>
-    createSiwsMessage({ ...message, statement: "foo\nbar" }),
-  ).toThrowErrorMatchingInlineSnapshot(`
+  expect(() => createSiwsMessage({ ...message, statement: "foo\nbar" }))
+    .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "statement".
     - Statement must not include '\\n'.
     Provided value: foo
