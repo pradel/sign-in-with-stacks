@@ -1,53 +1,24 @@
 {
-  "name": "sign-in-with-stacks",
-  "version": "0.1.4",
-  "license": "MIT",
-  "repository": "pradel/sign-in-with-stacks",
-  "funding": "https://github.com/sponsors/pradel",
+  "private": true,
   "packageManager": "pnpm@10.22.0",
-  "type": "module",
-  "sideEffects": false,
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "dist",
-    "src/**/*.ts",
-    "!src/**/*.test.ts"
-  ],
   "scripts": {
-    "build": "tsdown",
-    "test": "vitest",
-    "check-types": "tsc --noEmit",
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write --ignore-unknown .",
+    "format:check": "prettier --check --ignore-unknown .",
+    "changeset": "changeset",
     "version": "changeset version",
-    "release": "changeset publish"
+    "release": "turbo run build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "0.5.1",
     "@changesets/cli": "2.29.7",
-    "@stacks/encryption": "7.3.0",
-    "@stacks/network": "7.2.0",
-    "@stacks/transactions": "7.3.0",
-    "@tsconfig/recommended": "1.0.13",
-    "@types/node": "24.10.1",
-    "publint": "0.3.15",
-    "tsdown": "0.16.4",
-    "typescript": "5.9.3",
-    "vitest": "4.0.9"
-  },
-  "peerDependencies": {
-    "@stacks/common": "^7.0.2",
-    "@stacks/encryption": "^7.0.2",
-    "@stacks/network": "^7.0.2",
-    "@stacks/transactions": "^7.0.2"
+    "lefthook": "2.0.4",
+    "oxlint": "1.28.0",
+    "prettier": "3.6.2",
+    "turbo": "2.6.1"
   }
 }
