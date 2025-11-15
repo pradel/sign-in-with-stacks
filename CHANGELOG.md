@@ -1,5 +1,11 @@
 # sign-in-with-stacks
 
+## 0.1.4
+
+### Patch Changes
+
+- c534d23: Setup trusted publishing for npm
+
 ## 0.1.3
 
 ### Patch Changes
