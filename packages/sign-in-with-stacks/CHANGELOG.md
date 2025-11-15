@@ -1,5 +1,11 @@
 # sign-in-with-stacks
 
+## 0.1.6
+
+### Patch Changes
+
+- [`ab45405`](https://github.com/pradel/sign-in-with-stacks/commit/ab454051935ef419be668217e86dcbcfc797bb45) Thanks [@pradel](https://github.com/pradel)! - Add docs README.md to npm
+
 ## 0.1.5
 
 ### Patch Changes
