@@ -1,13 +1,48 @@
 "use client";
 
-import { connect, disconnect } from "@stacks/connect";
-import { useSession } from "next-auth/react";
+import { connect, disconnect, request } from "@stacks/connect";
+import { STACKS_MAINNET } from "@stacks/network";
+import { getCsrfToken, signIn, useSession } from "next-auth/react";
+import { createSiwsMessage, generateSiwsNonce } from "sign-in-with-stacks";
 
 export default function Home() {
   const { data: session, status } = useSession();
 
-  function handleConnect() {
-    connect();
+  async function handleConnect() {
+    const connectResult = await connect();
+
+    const stxAddress = connectResult.addresses.find(
+      (address) => address.symbol === "STX",
+    );
+    if (!stxAddress) {
+      throw new Error("No STX address found");
+    }
+
+    const nonce = await getCsrfToken();
+    if (!nonce) {
+      throw new Error("Cannot get CSRF token");
+    }
+
+    const message = createSiwsMessage({
+      address: stxAddress.address,
+      chainId: STACKS_MAINNET.chainId,
+      domain: "example.com",
+      nonce,
+      uri: "https://example.com/path",
+      version: "1",
+    });
+
+    const signResult = await request("stx_signMessage", {
+      message,
+    });
+
+    signIn("credentials", {
+      address: stxAddress.address,
+      message: message,
+      signature: signResult.signature,
+      redirect: false,
+      callbackUrl: "/",
+    });
   }
 
   function handleDisconnect() {

@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@stacks/connect": "8.2.2",
+    "@stacks/network": "7.2.0",
     "next": "16.0.3",
     "next-auth": "4.24.13",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "sign-in-with-stacks": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",

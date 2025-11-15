@@ -32,6 +32,9 @@ importers:
       '@stacks/connect':
         specifier: 8.2.2
         version: 8.2.2(@types/react@19.2.5)(lit@3.3.0)(react@19.2.0)(typescript@5.9.3)(zod@4.1.12)
+      '@stacks/network':
+        specifier: 7.2.0
+        version: 7.2.0
       next:
         specifier: 16.0.3
         version: 16.0.3(@babel/core@7.28.5)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -44,6 +47,9 @@ importers:
       react-dom:
         specifier: 19.2.0
         version: 19.2.0(react@19.2.0)
+      sign-in-with-stacks:
+        specifier: workspace:*
+        version: link:../../packages/sign-in-with-stacks
     devDependencies:
       '@tailwindcss/postcss':
         specifier: 4.1.17
