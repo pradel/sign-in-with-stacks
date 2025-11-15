@@ -11,7 +11,7 @@
     "format:check": "prettier --check --ignore-unknown .",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "cp README.md ./packages/sign-in-with-stacks && changeset publish"
   },
   "devDependencies": {
     "@changesets/changelog-github": "0.5.1",
