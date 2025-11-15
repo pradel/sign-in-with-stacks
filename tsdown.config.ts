@@ -5,6 +5,7 @@ const config: UserConfigFn | UserConfig = defineConfig({
   sourcemap: true,
   clean: true,
   dts: true,
+  publint: true,
   platform: "neutral",
 });
 
