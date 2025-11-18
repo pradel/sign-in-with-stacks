@@ -3,7 +3,7 @@
 import { connect, disconnect, request } from "@stacks/connect";
 import { STACKS_MAINNET } from "@stacks/network";
 import { getCsrfToken, signIn, useSession } from "next-auth/react";
-import { createSiwsMessage, generateSiwsNonce } from "sign-in-with-stacks";
+import { createSiwsMessage } from "sign-in-with-stacks";
 
 export default function Home() {
   const { data: session, status } = useSession();
