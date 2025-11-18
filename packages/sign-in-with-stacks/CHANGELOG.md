@@ -1,5 +1,11 @@
 # sign-in-with-stacks
 
+## 0.1.7
+
+### Patch Changes
+
+- [#13](https://github.com/pradel/sign-in-with-stacks/pull/13) [`5c5816f`](https://github.com/pradel/sign-in-with-stacks/commit/5c5816f3940cf5be0c0c27729d82d95b697a0068) Thanks [@pradel](https://github.com/pradel)! - Add Next.js + NextAuth.js example
+
 ## 0.1.6
 
 ### Patch Changes
