@@ -26,17 +26,26 @@ export const betterAuthSiws = (options: SIWSPluginOptions) =>
         {
           method: "POST",
           body: z.object({
+            // TODO Stacks address regex
             walletAddress: z.string(),
+            chainId: z
+              .number()
+              .int()
+              .positive()
+              .max(2147483647)
+              .optional()
+              .default(0x00000001), // Default to Stacks mainnet
           }),
         },
         async (ctx) => {
+          const { walletAddress, chainId } = ctx.body;
           const nonce = options.getNonce
             ? await options.getNonce()
             : generateSiwsNonce();
 
           // Store nonce with 15-minute expiration
           await ctx.context.internalAdapter.createVerificationValue({
-            identifier: `siws:${ctx.body.walletAddress.toLowerCase()}`,
+            identifier: `siws:${walletAddress.toLowerCase()}:${chainId}`,
             value: nonce,
             expiresAt: new Date(Date.now() + 15 * 60 * 1000),
           });
@@ -49,16 +58,31 @@ export const betterAuthSiws = (options: SIWSPluginOptions) =>
         "/siws/verify",
         {
           method: "POST",
-          body: z.object({
-            walletAddress: z.string().min(1),
-            message: z.string().min(1),
-            signature: z.string().min(1),
-            email: z.email().optional(),
-          }),
+          body: z
+            .object({
+              // TODO Stacks address regex
+              walletAddress: z.string().min(1),
+              message: z.string().min(1),
+              signature: z.string().min(1),
+              chainId: z
+                .number()
+                .int()
+                .positive()
+                .max(2147483647)
+                .optional()
+                .default(0x00000001), // Default to Stacks mainnet
+              email: z.email().optional(),
+            })
+            .refine((data) => options.anonymous !== false || !!data.email, {
+              message:
+                "Email is required when the anonymous plugin option is disabled.",
+              path: ["email"],
+            }),
           requireRequest: true,
         },
         async (ctx) => {
-          const { walletAddress, message, signature, email } = ctx.body;
+          const { walletAddress, message, signature, chainId, email } =
+            ctx.body;
           const isAnon = options.anonymous ?? true;
 
           if (!isAnon && !email) {
@@ -72,7 +96,7 @@ export const betterAuthSiws = (options: SIWSPluginOptions) =>
             // Find stored nonce with wallet address and chain ID context
             const verification =
               await ctx.context.internalAdapter.findVerificationValue(
-                `siws:${walletAddress.toLowerCase()}`,
+                `siws:${walletAddress.toLowerCase()}:${chainId}`,
               );
 
             // Ensure nonce is valid and not expired
@@ -115,6 +139,7 @@ export const betterAuthSiws = (options: SIWSPluginOptions) =>
                 model: "walletAddress",
                 where: [
                   { field: "address", operator: "eq", value: walletAddress },
+                  { field: "chainId", operator: "eq", value: chainId },
                 ],
               });
 
@@ -130,6 +155,29 @@ export const betterAuthSiws = (options: SIWSPluginOptions) =>
                   },
                 ],
               });
+            } else {
+              // No exact match found, check if this address exists on any other chain
+              const anyWalletAddress: WalletAddress | null =
+                await ctx.context.adapter.findOne({
+                  model: "walletAddress",
+                  where: [
+                    { field: "address", operator: "eq", value: walletAddress },
+                  ],
+                });
+
+              if (anyWalletAddress) {
+                // Same address exists on different chain, get that user
+                user = await ctx.context.adapter.findOne({
+                  model: "user",
+                  where: [
+                    {
+                      field: "id",
+                      operator: "eq",
+                      value: anyWalletAddress.userId,
+                    },
+                  ],
+                });
+              }
             }
 
             // Create new user if none exists
@@ -146,11 +194,12 @@ export const betterAuthSiws = (options: SIWSPluginOptions) =>
               });
 
               // Create wallet address record
-              await ctx.context.adapter.create({
+              await ctx.context.adapter.create<WalletAddress>({
                 model: "walletAddress",
                 data: {
                   userId: user.id,
                   address: walletAddress,
+                  chainId,
                   isPrimary: true, // First address is primary
                   createdAt: new Date(),
                 },
