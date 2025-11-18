@@ -3,6 +3,7 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { generateSiwsNonce, verifySiwsMessage } from "sign-in-with-stacks";
 import z from "zod";
+import { schema } from "./schema";
 import type { WalletAddress } from "./types";
 
 export interface SIWSPluginOptions {
@@ -17,9 +18,10 @@ export interface SIWSPluginOptions {
   // schema?: InferOptionSchema<typeof schema> | undefined;
 }
 
-export const betterAuthSiws = (options: SIWSPluginOptions) =>
+export const siws = (options: SIWSPluginOptions) =>
   ({
     id: "sign-in-with-stacks",
+    schema,
     endpoints: {
       nonce: createAuthEndpoint(
         "/siws/nonce",
