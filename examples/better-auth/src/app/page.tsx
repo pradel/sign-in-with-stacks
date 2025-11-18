@@ -55,8 +55,9 @@ export default function Home() {
     console.log("data", data);
   }
 
-  function handleDisconnect() {
+  async function handleDisconnect() {
     disconnect();
+    await authClient.signOut();
   }
 
   return (
