@@ -18,17 +18,22 @@ export default function Home() {
       throw new Error("No STX address found");
     }
 
-    const nonce = await getCsrfToken();
-    if (!nonce) {
-      throw new Error("Cannot get CSRF token");
+    const { data: nonceResult, error: nonceError } =
+      await authClient.siws.nonce({
+        walletAddress: stxAddress.address,
+        chainId: STACKS_MAINNET.chainId,
+      });
+
+    if (nonceError) {
+      throw new Error(`Error getting nonce: ${nonceError.message}`);
     }
 
     const message = createSiwsMessage({
       address: stxAddress.address,
       chainId: STACKS_MAINNET.chainId,
-      domain: "example.com",
-      nonce,
-      uri: "https://example.com/path",
+      domain: "localhost:3000",
+      nonce: nonceResult.nonce,
+      uri: "http://localhost:3000",
       version: "1",
     });
 
@@ -36,20 +41,23 @@ export default function Home() {
       message,
     });
 
-    signIn("credentials", {
-      address: stxAddress.address,
-      message: message,
+    const { data, error } = await authClient.siws.verify({
+      message,
       signature: signResult.signature,
-      redirect: false,
-      callbackUrl: "/",
+      walletAddress: stxAddress.address,
+      chainId: STACKS_MAINNET.chainId,
     });
+
+    if (error) {
+      throw new Error(`Error verifying SIWS message: ${error.message}`);
+    }
+
+    console.log("data", data);
   }
 
   function handleDisconnect() {
     disconnect();
   }
-
-  console.log("session", session);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
