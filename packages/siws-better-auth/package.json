@@ -1,12 +1,13 @@
 {
-  "name": "sign-in-with-stacks",
-  "version": "0.1.6",
+  "name": "siws-better-auth",
+  "version": "0.0.1",
   "license": "MIT",
-  "description": "Sign-in with Stacks is a library for creating and verifying Sign-In with Stacks messages",
+  "description": "better auth plugin for Sign-in with Stacks",
   "keywords": [
     "stacks",
     "siws",
-    "sign-in-with-stacks"
+    "sign-in-with-stacks",
+    "better-auth"
   ],
   "repository": "pradel/sign-in-with-stacks",
   "funding": "https://github.com/sponsors/pradel",
@@ -38,20 +39,16 @@
     "test": "vitest"
   },
   "devDependencies": {
-    "@stacks/encryption": "7.3.0",
-    "@stacks/network": "7.2.0",
-    "@stacks/transactions": "7.3.0",
     "@tsconfig/recommended": "1.0.13",
     "@types/node": "24.10.1",
     "publint": "0.3.15",
+    "sign-in-with-stacks": "workspace:*",
     "tsdown": "0.16.5",
     "typescript": "5.9.3",
     "vitest": "4.0.10"
   },
   "peerDependencies": {
-    "@stacks/common": "^7.0.2",
-    "@stacks/encryption": "^7.0.2",
-    "@stacks/network": "^7.0.2",
-    "@stacks/transactions": "^7.0.2"
+    "sign-in-with-stacks": "^0.1.0",
+    "zod": "^3.0.0 || ^4.0.0"
   }
 }

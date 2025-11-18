@@ -3,8 +3,8 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { generateSiwsNonce, verifySiwsMessage } from "sign-in-with-stacks";
 import z from "zod";
-import { schema } from "./schema";
-import type { WalletAddress } from "./types";
+import { schema } from "./schema.js";
+import type { WalletAddress } from "./types.js";
 
 export interface SIWSPluginOptions {
   // The domain name of your application (required for SIWS message generation)
@@ -15,13 +15,12 @@ export interface SIWSPluginOptions {
   anonymous?: boolean | undefined;
   // Function to generate a unique nonce for each sign-in attempt. You must implement this function to return a cryptographically secure random string. Must return a Promise<string>
   getNonce?: () => Promise<string>;
-  // schema?: InferOptionSchema<typeof schema> | undefined;
 }
 
 export const siws = (options: SIWSPluginOptions) =>
   ({
     id: "sign-in-with-stacks",
-    schema,
+    schema: schema,
     endpoints: {
       nonce: createAuthEndpoint(
         "/siws/nonce",
