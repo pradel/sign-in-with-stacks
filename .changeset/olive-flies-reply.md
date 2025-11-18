@@ -2,4 +2,4 @@
 "sign-in-with-stacks": patch
 ---
 
-Add next-auth example
+Add Next.js + NextAuth.js example
