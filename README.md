@@ -47,6 +47,10 @@ const valid = verifySiwsMessage({
 });
 ```
 
+## Examples
+
+- [Next.js + NextAuth.js](./examples/next-auth)
+
 ## Credits
 
 The first version of this library is a port of the view siwe implementation.
