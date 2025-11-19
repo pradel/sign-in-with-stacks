@@ -7,17 +7,13 @@
       "outputs": ["dist/**", "build/**"]
     },
     "check-types": {
-      "cache": false
+      "dependsOn": ["^build"]
     },
-    "lint": {
-      "cache": false
-    },
+    "lint": {},
     "dev": {
       "cache": false,
       "persistent": true
     },
-    "test": {
-      "cache": false
-    }
+    "test": {}
   }
 }

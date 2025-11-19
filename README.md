@@ -47,8 +47,13 @@ const valid = verifySiwsMessage({
 });
 ```
 
+## Plugins
+
+- [better-auth plugin](./packages/siws-better-auth)
+
 ## Examples
 
+- [Next.js + better-auth](./examples/better-auth)
 - [Next.js + NextAuth.js](./examples/next-auth)
 
 ## Credits
