@@ -44,9 +44,9 @@
     "@tsconfig/recommended": "1.0.13",
     "@types/node": "24.10.1",
     "publint": "0.3.15",
-    "tsdown": "0.16.5",
+    "tsdown": "0.16.6",
     "typescript": "5.9.3",
-    "vitest": "4.0.10"
+    "vitest": "4.0.13"
   },
   "peerDependencies": {
     "@stacks/common": "^7.0.2",
