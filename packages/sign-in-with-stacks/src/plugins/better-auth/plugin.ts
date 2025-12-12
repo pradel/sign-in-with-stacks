@@ -1,8 +1,8 @@
 import type { BetterAuthPlugin, User } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { generateSiwsNonce, verifySiwsMessage } from "sign-in-with-stacks";
 import z from "zod";
+import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { schema } from "./schema.js";
 import type { WalletAddress } from "./types.js";
 

@@ -50,9 +50,6 @@ importers:
       sign-in-with-stacks:
         specifier: workspace:*
         version: link:../../packages/sign-in-with-stacks
-      siws-better-auth:
-        specifier: workspace:*
-        version: link:../../packages/siws-better-auth
       zod:
         specifier: 4.1.13
         version: 4.1.13
@@ -152,40 +149,12 @@ importers:
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
-      publint:
-        specifier: 0.3.16
-        version: 0.3.16
-      tsdown:
-        specifier: 0.17.3
-        version: 0.17.3(publint@0.3.16)(typescript@5.9.3)
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: 4.0.15
-        version: 4.0.15(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)
-
-  packages/siws-better-auth:
-    dependencies:
-      zod:
-        specifier: ^3.0.0 || ^4.0.0
-        version: 4.1.13
-    devDependencies:
-      '@tsconfig/recommended':
-        specifier: 1.0.13
-        version: 1.0.13
-      '@types/node':
-        specifier: 24.10.1
-        version: 24.10.1
       better-auth:
         specifier: 1.4.6
         version: 1.4.6(next@16.0.10(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       publint:
         specifier: 0.3.16
         version: 0.3.16
-      sign-in-with-stacks:
-        specifier: workspace:*
-        version: link:../sign-in-with-stacks
       tsdown:
         specifier: 0.17.3
         version: 0.17.3(publint@0.3.16)(typescript@5.9.3)
@@ -195,6 +164,9 @@ importers:
       vitest:
         specifier: 4.0.15
         version: 4.0.15(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)
+      zod:
+        specifier: 4.1.13
+        version: 4.1.13
 
 packages:
 

@@ -49,7 +49,7 @@ const valid = verifySiwsMessage({
 
 ## Plugins
 
-- [better-auth plugin](./packages/siws-better-auth)
+- [better-auth plugin](./packages/sign-in-with-stacks/src/plugins/better-auth)
 
 ## Examples
 

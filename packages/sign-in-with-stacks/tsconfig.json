@@ -5,7 +5,6 @@
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "isolatedDeclarations": true,
     "declaration": true
   },
   "include": ["**/*.ts"],

@@ -16,7 +16,6 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sign-in-with-stacks": "workspace:*",
-    "siws-better-auth": "workspace:*",
     "zod": "4.1.13"
   },
   "devDependencies": {

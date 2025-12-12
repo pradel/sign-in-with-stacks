@@ -1,4 +1,4 @@
-# siws-better-auth
+# sign-in-with-stacks/plugins/better-auth
 
 A SIWS plugin for better-auth.
 
@@ -8,7 +8,7 @@ A SIWS plugin for better-auth.
 
 ```ts
 import { betterAuth } from "better-auth";
-import { sisw } from "siws-better-auth";
+import { sisw } from "sign-in-with-stacks/plugins/better-auth";
 
 export const auth = betterAuth({
   plugins: [
@@ -30,7 +30,7 @@ npx @better-auth/cli migrate
 
 ```ts
 import { createAuthClient } from "better-auth/client";
-import { siwsClient } from "siws-better-auth/client";
+import { siwsClient } from "sign-in-with-stacks/plugins/better-auth/client";
 
 export const authClient = createAuthClient({
   plugins: [siwsClient()],

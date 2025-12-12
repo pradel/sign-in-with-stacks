@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { siws } from "siws-better-auth";
+import { siws } from "sign-in-with-stacks/plugins";
 
 export const auth = betterAuth({
   // Replace this with your own secret in a real project
