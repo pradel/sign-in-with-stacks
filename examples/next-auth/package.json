@@ -11,20 +11,20 @@
   "dependencies": {
     "@stacks/connect": "8.2.3",
     "@stacks/network": "7.2.0",
-    "next": "16.0.7",
+    "next": "16.0.10",
     "next-auth": "4.24.13",
-    "react": "19.2.1",
-    "react-dom": "19.2.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "sign-in-with-stacks": "workspace:*"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.1.17",
+    "@tailwindcss/postcss": "4.1.18",
     "@types/node": "24.10.1",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.1",
-    "eslint-config-next": "16.0.7",
-    "tailwindcss": "4.1.17",
+    "eslint-config-next": "16.0.10",
+    "tailwindcss": "4.1.18",
     "typescript": "5.9.3"
   }
 }

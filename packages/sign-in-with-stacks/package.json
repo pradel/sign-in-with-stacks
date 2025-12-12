@@ -43,8 +43,8 @@
     "@stacks/transactions": "7.3.0",
     "@tsconfig/recommended": "1.0.13",
     "@types/node": "24.10.1",
-    "publint": "0.3.15",
-    "tsdown": "0.17.0",
+    "publint": "0.3.16",
+    "tsdown": "0.17.3",
     "typescript": "5.9.3",
     "vitest": "4.0.15"
   },
