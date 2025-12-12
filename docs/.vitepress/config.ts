@@ -5,12 +5,6 @@ export default defineConfig({
   description:
     "A library for creating and verifying Sign-In with Stacks messages",
   themeConfig: {
-    nav: [
-      {
-        icon: "github",
-        link: "https://github.com/pradel/sign-in-with-stacks",
-      },
-    ],
     sidebar: [
       {
         text: "Guide",
