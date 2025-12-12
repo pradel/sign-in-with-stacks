@@ -8,11 +8,11 @@ A SIWS plugin for better-auth.
 
 ```ts
 import { betterAuth } from "better-auth";
-import { sisw } from "sign-in-with-stacks/plugins/better-auth";
+import { siws } from "sign-in-with-stacks/plugins/better-auth";
 
 export const auth = betterAuth({
   plugins: [
-    sisw({
+    siws({
       domain: "example.com",
       emailDomainName: "example.com", // optional
     }),
@@ -52,7 +52,7 @@ if (data) {
 5. On the client, sign in with SIWS:
 
 ```ts
-const { data, error } = await authClient.siwe.verify({
+const { data, error } = await authClient.siws.verify({
   message: "Your SIWS message string",
   signature: "0x...", // The signature from the user's wallet
   walletAddress: "your-user-wallet-address",
