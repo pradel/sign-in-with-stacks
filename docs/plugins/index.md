@@ -29,4 +29,4 @@ Sign-In with Stacks is framework-agnostic and can be integrated with any authent
 - `verifySiwsMessage` - Verify a signed SIWS message
 - `validateSiwsMessage` - Validate message fields without signature verification
 
-See the [Getting Started guide](/guide/) for basic usage, then adapt the flow to your authentication framework of choice.
+See the [Getting Started guide](/) for basic usage, then adapt the flow to your authentication framework of choice.
