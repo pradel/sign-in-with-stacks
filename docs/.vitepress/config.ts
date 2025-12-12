@@ -1,6 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
+  base: "/sign-in-with-stacks/",
   title: "Sign-In with Stacks",
   description:
     "A library for creating and verifying Sign-In with Stacks messages",
