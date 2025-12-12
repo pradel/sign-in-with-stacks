@@ -30,7 +30,7 @@ npx @better-auth/cli migrate
 
 ```ts
 import { createAuthClient } from "better-auth/client";
-import { siwsClient } from "siws-better-auth";
+import { siwsClient } from "siws-better-auth/client";
 
 export const authClient = createAuthClient({
   plugins: [siwsClient()],
