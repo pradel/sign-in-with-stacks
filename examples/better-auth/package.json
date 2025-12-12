@@ -1,21 +1,22 @@
 {
-  "name": "@example/next-auth",
+  "name": "@example/better-auth",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@stacks/connect": "8.2.3",
     "@stacks/network": "7.2.0",
+    "better-auth": "1.4.6",
     "next": "16.1.0-canary.16",
-    "next-auth": "4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "sign-in-with-stacks": "workspace:*"
+    "sign-in-with-stacks": "workspace:*",
+    "zod": "4.1.13"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.18",
