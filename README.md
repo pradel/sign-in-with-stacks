@@ -2,6 +2,10 @@
 
 Sign-in with Stacks is a library for creating and verifying Sign-In with Stacks messages.
 
+## Documentation
+
+[Head to the documentation](https://pradel.github.io/sign-in-with-stacks/) to read and learn more about the package.
+
 ## Installation
 
 ```

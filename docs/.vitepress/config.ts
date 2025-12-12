@@ -18,6 +18,21 @@ export default defineConfig({
           { text: "Better Auth", link: "/plugins/better-auth" },
         ],
       },
+      {
+        text: "Examples",
+        items: [
+          {
+            text: "Next.js + Better Auth",
+            link: "https://github.com/pradel/sign-in-with-stacks/tree/main/examples/better-auth",
+            target: "_blank",
+          },
+          {
+            text: "Next.js + NextAuth.js",
+            link: "https://github.com/pradel/sign-in-with-stacks/tree/main/examples/next-auth",
+            target: "_blank",
+          },
+        ],
+      },
     ],
     socialLinks: [
       {
