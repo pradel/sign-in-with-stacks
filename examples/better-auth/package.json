@@ -9,22 +9,22 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@stacks/connect": "8.2.3",
-    "@stacks/network": "7.2.0",
-    "better-auth": "1.4.6",
-    "next": "16.1.0-canary.16",
+    "@stacks/connect": "8.2.4",
+    "@stacks/network": "7.3.1",
+    "better-auth": "1.4.7",
+    "next": "16.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sign-in-with-stacks": "workspace:*",
-    "zod": "4.1.13"
+    "zod": "4.2.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.18",
     "@types/node": "24.10.1",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
-    "eslint": "9.39.1",
-    "eslint-config-next": "16.0.10",
+    "eslint": "9.39.2",
+    "eslint-config-next": "16.1.0",
     "tailwindcss": "4.1.18",
     "typescript": "5.9.3"
   }

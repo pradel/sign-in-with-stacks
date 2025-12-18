@@ -50,17 +50,17 @@
     "test": "vitest"
   },
   "devDependencies": {
-    "@stacks/encryption": "7.3.0",
-    "@stacks/network": "7.2.0",
-    "@stacks/transactions": "7.3.0",
+    "@stacks/encryption": "7.3.1",
+    "@stacks/network": "7.3.1",
+    "@stacks/transactions": "7.3.1",
     "@tsconfig/recommended": "1.0.13",
     "@types/node": "24.10.1",
-    "better-auth": "1.4.6",
+    "better-auth": "1.4.7",
     "publint": "0.3.16",
-    "tsdown": "0.17.3",
+    "tsdown": "0.18.1",
     "typescript": "5.9.3",
-    "vitest": "4.0.15",
-    "zod": "4.1.13"
+    "vitest": "4.0.16",
+    "zod": "4.2.1"
   },
   "peerDependencies": {
     "@stacks/common": "^7.0.2",
