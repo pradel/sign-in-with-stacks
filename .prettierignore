@@ -4,3 +4,5 @@ build
 .turbo
 pnpm-lock.yaml
 *.log
+.next
+.vitepress
