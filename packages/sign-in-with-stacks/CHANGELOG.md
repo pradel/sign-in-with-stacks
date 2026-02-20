@@ -1,5 +1,19 @@
 # sign-in-with-stacks
 
+## 0.2.0
+
+### Minor Changes
+
+- [#15](https://github.com/pradel/sign-in-with-stacks/pull/15) [`ef736a1`](https://github.com/pradel/sign-in-with-stacks/commit/ef736a1e59bef2140fa6256508ffeddb210232c4) Thanks [@pradel](https://github.com/pradel)! - Add better-auth plugin
+
+- [`650d3f7`](https://github.com/pradel/sign-in-with-stacks/commit/650d3f716145cd361b512d4e350eefd75692dfc8) Thanks [@pradel](https://github.com/pradel)! - Add documentation website.
+
+### Patch Changes
+
+- [#13](https://github.com/pradel/sign-in-with-stacks/pull/13) [`5c5816f`](https://github.com/pradel/sign-in-with-stacks/commit/5c5816f3940cf5be0c0c27729d82d95b697a0068) Thanks [@pradel](https://github.com/pradel)! - Add Next.js + NextAuth.js example
+
+- [#15](https://github.com/pradel/sign-in-with-stacks/pull/15) [`ef736a1`](https://github.com/pradel/sign-in-with-stacks/commit/ef736a1e59bef2140fa6256508ffeddb210232c4) Thanks [@pradel](https://github.com/pradel)! - Add Next.js + better-auth example
+
 ## 0.1.6
 
 ### Patch Changes
