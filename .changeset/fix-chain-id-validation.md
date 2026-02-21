@@ -1,5 +1,5 @@
 ---
-"sign-in-with-stacks": patch
+"sign-in-with-stacks": minor
 ---
 
 Fix chain ID validation to support the full SIP-005 unsigned 32-bit range, allowing `STACKS_TESTNET` chain ID (`2147483648`) to work correctly.

@@ -1,6 +1,6 @@
 import { bytesToHex } from "@stacks/common";
 import { hashMessage } from "@stacks/encryption";
-import { STACKS_MAINNET, STACKS_TESTNET } from "@stacks/network";
+import { STACKS_TESTNET } from "@stacks/network";
 import { signMessageHashRsv } from "@stacks/transactions";
 import { getTestInstance } from "better-auth/test";
 import { describe, expect, test } from "vitest";
