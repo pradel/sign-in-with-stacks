@@ -33,7 +33,7 @@ export const siws = (options: SIWSPluginOptions) =>
               .number()
               .int()
               .positive()
-              .max(2147483647)
+              .max(4294967295)
               .optional()
               .default(0x00000001), // Default to Stacks mainnet
           }),
@@ -69,7 +69,7 @@ export const siws = (options: SIWSPluginOptions) =>
                 .number()
                 .int()
                 .positive()
-                .max(2147483647)
+                .max(4294967295)
                 .optional()
                 .default(0x00000001), // Default to Stacks mainnet
               email: z.email().optional(),

@@ -56,6 +56,7 @@
     "@tsconfig/recommended": "1.0.13",
     "@types/node": "25.3.0",
     "better-auth": "1.4.18",
+    "better-sqlite3": "^12.6.2",
     "publint": "0.3.17",
     "tsdown": "0.20.3",
     "typescript": "5.9.3",
