@@ -1,8 +1,10 @@
+import { DatabaseSync } from "node:sqlite";
 import { bytesToHex } from "@stacks/common";
 import { hashMessage } from "@stacks/encryption";
 import { STACKS_TESTNET } from "@stacks/network";
 import { signMessageHashRsv } from "@stacks/transactions";
-import { getTestInstance } from "better-auth/test";
+import { betterAuth } from "better-auth";
+import { getAdapter, getMigrations } from "better-auth/db";
 import { describe, expect, test } from "vitest";
 import { accounts } from "../../../test/constants.js";
 import { createSiwsMessage } from "../../createSiwsMessage.js";
@@ -10,21 +12,33 @@ import { siws } from "./plugin.js";
 
 const account = accounts[0];
 
-function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
-  return getTestInstance(
-    {
-      plugins: [
-        siws(
-          pluginOptions ?? {
-            domain: "localhost:3000",
-          },
-        ),
-      ],
-    },
-    {
-      disableTestUser: true,
-    },
-  );
+async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
+  const database = new DatabaseSync(":memory:");
+
+  const auth = betterAuth({
+    baseURL: "http://localhost:3000",
+    database,
+    emailAndPassword: { enabled: false },
+    rateLimit: { enabled: false },
+    secret: "better-auth-secret-that-is-long-enough-for-validation-test",
+    plugins: [
+      siws(
+        pluginOptions ?? {
+          domain: "localhost:3000",
+        },
+      ),
+    ],
+  });
+
+  const { runMigrations } = await getMigrations({
+    ...auth.options,
+    database,
+  });
+  await runMigrations();
+
+  const db = await getAdapter(auth.options);
+
+  return { auth, db };
 }
 
 async function getNonceFromApi(
