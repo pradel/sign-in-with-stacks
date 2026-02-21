@@ -13,11 +13,6 @@
     "version": "changeset version",
     "release": "cp README.md ./packages/sign-in-with-stacks && changeset publish"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3"
-    ]
-  },
   "devDependencies": {
     "@changesets/changelog-github": "0.5.2",
     "@changesets/cli": "2.29.8",
