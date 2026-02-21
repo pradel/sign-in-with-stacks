@@ -1,4 +1,4 @@
-import { STACKS_MAINNET } from "@stacks/network";
+import { STACKS_MAINNET, STACKS_TESTNET } from "@stacks/network";
 import { expect, test, vi } from "vitest";
 import { createSiwsMessage } from "./createSiwsMessage.js";
 import type { SiwsMessage } from "./types.js";
@@ -24,6 +24,30 @@ test("default", () => {
     URI: https://example.com/path
     Version: 1
     Chain ID: 1
+    Nonce: foobarbaz
+    Issued At: 2023-02-01T00:00:00.000Z"
+  `);
+
+  vi.useRealTimers();
+});
+
+test("default: testnet", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(Date.UTC(2023, 1, 1)));
+
+  expect(
+    createSiwsMessage({
+      ...message,
+      chainId: STACKS_TESTNET.chainId,
+    }),
+  ).toMatchInlineSnapshot(`
+    "example.com wants you to sign in with your Stacks account:
+    SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+
+    URI: https://example.com/path
+    Version: 1
+    Chain ID: 2147483648
     Nonce: foobarbaz
     Issued At: 2023-02-01T00:00:00.000Z"
   `);
