@@ -31,7 +31,7 @@ test("default", () => {
   vi.useRealTimers();
 });
 
-test("default: testnet", () => {
+test("parameters: chainId testnet", () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(Date.UTC(2023, 1, 1)));
 
