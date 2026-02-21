@@ -1,5 +1,14 @@
 # sign-in-with-stacks
 
+## 0.3.0
+
+### Minor Changes
+
+- [#17](https://github.com/pradel/sign-in-with-stacks/pull/17) [`abb4a6b`](https://github.com/pradel/sign-in-with-stacks/commit/abb4a6bc9ede7f56005ed095bb1670098636f6a7) Thanks [@pradel](https://github.com/pradel)! - Fix chain ID validation to support the full SIP-005 unsigned 32-bit range, allowing `STACKS_TESTNET` chain ID (`2147483648`) to work correctly.
+  - `createSiwsMessage` now validates that `chainId` is a positive 32-bit unsigned integer (1 to 4294967295)
+  - Better-auth plugin zod schema updated from `.max(2147483647)` to `.max(4294967295)` on both nonce and verify endpoints
+  - Better-auth plugin `walletAddress.chainId` database field now uses `bigint` to avoid PostgreSQL integer overflow
+
 ## 0.2.0
 
 ### Minor Changes
