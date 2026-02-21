@@ -18,6 +18,7 @@ export const schema = {
       chainId: {
         type: "number",
         required: true,
+        bigint: true,
       },
       isPrimary: {
         type: "boolean",

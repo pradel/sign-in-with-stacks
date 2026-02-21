@@ -49,11 +49,12 @@ export function createSiwsMessage(
   // Validate fields
   {
     // Required fields
-    if (chainId !== Math.floor(chainId))
+    if (!Number.isInteger(chainId) || chainId < 1 || chainId > 4294967295)
       throw new SiwsInvalidMessageFieldError({
         field: "chainId",
         metaMessages: [
           "- Chain ID must be a SIP-005 chain ID.",
+          "- Chain ID must be a positive 32-bit unsigned integer.",
           "- See https://github.com/stacksgov/sips/blob/main/sips/sip-005/sip-005-blocks-and-transactions.md",
           "",
           `Provided value: ${chainId}`,
