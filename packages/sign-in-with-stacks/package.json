@@ -47,7 +47,8 @@
     "check-types": "tsc --noEmit",
     "dev": "tsdown --watch",
     "lint": "oxlint .",
-    "test": "vitest"
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@stacks/encryption": "7.3.1",
@@ -55,6 +56,7 @@
     "@stacks/transactions": "7.3.1",
     "@tsconfig/recommended": "1.0.13",
     "@types/node": "25.3.0",
+    "@vitest/coverage-v8": "4.0.18",
     "better-auth": "1.4.18",
     "publint": "0.3.17",
     "tsdown": "0.20.3",
