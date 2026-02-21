@@ -371,7 +371,7 @@ describe("verify endpoint", () => {
     });
 
     // Check the user's email in the database
-    const user = await db.findOne({
+    const user = await db.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
@@ -408,7 +408,7 @@ describe("verify endpoint", () => {
       chainId: STACKS_TESTNET.chainId,
     });
 
-    const user = await db.findOne({
+    const user = await db.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
