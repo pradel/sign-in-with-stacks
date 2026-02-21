@@ -280,6 +280,7 @@ test("behavior: invalid chainId", () => {
     .toThrowErrorMatchingInlineSnapshot(`
     [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "chainId".
     - Chain ID must be a SIP-005 chain ID.
+    - Chain ID must be a positive 32-bit unsigned integer.
     - See https://github.com/stacksgov/sips/blob/main/sips/sip-005/sip-005-blocks-and-transactions.md
     Provided value: 1.1]
   `);
