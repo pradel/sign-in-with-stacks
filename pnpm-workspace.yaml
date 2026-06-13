@@ -3,6 +3,14 @@ packages:
   - examples/*
   - packages/*
 
+allowBuilds:
+  "@reown/appkit": false
+  esbuild: false
+  lefthook: false
+  secp256k1: false
+  sharp: false
+  unrs-resolver: false
+
 onlyBuiltDependencies:
   - esbuild
   - lefthook
