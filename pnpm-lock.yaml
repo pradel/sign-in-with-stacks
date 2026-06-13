@@ -162,11 +162,11 @@ importers:
         specifier: 1.4.18
         version: 1.4.18(next@16.1.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vitest@4.0.18(@types/node@25.3.0)(jiti@2.6.1)(lightningcss@1.31.1))(vue@3.5.28(typescript@5.9.3))
       publint:
-        specifier: 0.3.17
-        version: 0.3.17
+        specifier: 0.3.21
+        version: 0.3.21
       tsdown:
         specifier: 0.20.3
-        version: 0.20.3(publint@0.3.17)(typescript@5.9.3)
+        version: 0.20.3(publint@0.3.21)(typescript@5.9.3)
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -3882,8 +3882,8 @@ packages:
   proxy-compare@3.0.1:
     resolution: {integrity: sha512-V9plBAt3qjMlS1+nC8771KNf6oJ12gExvaxnNzN/9yVRLdTv/lc+oJlnSzrdYDAvBfTStPCoiaCOTmTs0adv7Q==}
 
-  publint@0.3.17:
-    resolution: {integrity: sha512-Q3NLegA9XM6usW+dYQRG1g9uEHiYUzcCVBJDJ7yMcWRqVU9LYZUWdqbwMZfmTCFC5PZLQpLAmhvRcQRl3exqkw==}
+  publint@0.3.21:
+    resolution: {integrity: sha512-OqejcnMV6E9zel2oCrUOJEiiFkGiAAni0A6ibfQNh1k9Gu5z4F+Yso8lllam7AzmV6Do0vp7u3UpZNRBwuXaHQ==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -9210,7 +9210,7 @@ snapshots:
 
   proxy-compare@3.0.1: {}
 
-  publint@0.3.17:
+  publint@0.3.21:
     dependencies:
       '@publint/pack': 0.1.4
       package-manager-detector: 1.6.0
@@ -9788,7 +9788,7 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
-  tsdown@0.20.3(publint@0.3.17)(typescript@5.9.3):
+  tsdown@0.20.3(publint@0.3.21)(typescript@5.9.3):
     dependencies:
       ansis: 4.2.0
       cac: 6.7.14
@@ -9807,7 +9807,7 @@ snapshots:
       unconfig-core: 7.5.0
       unrun: 0.2.27
     optionalDependencies:
-      publint: 0.3.17
+      publint: 0.3.21
       typescript: 5.9.3
     transitivePeerDependencies:
       - '@ts-macro/tsc'

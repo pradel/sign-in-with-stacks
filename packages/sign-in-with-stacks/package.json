@@ -8,7 +8,11 @@
     "siws",
     "sign-in-with-stacks"
   ],
-  "repository": "pradel/sign-in-with-stacks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pradel/sign-in-with-stacks.git",
+    "directory": "packages/sign-in-with-stacks"
+  },
   "funding": "https://github.com/sponsors/pradel",
   "type": "module",
   "sideEffects": false,
@@ -58,7 +62,7 @@
     "@types/node": "25.3.0",
     "@vitest/coverage-v8": "4.0.18",
     "better-auth": "1.4.18",
-    "publint": "0.3.17",
+    "publint": "0.3.21",
     "tsdown": "0.20.3",
     "typescript": "5.9.3",
     "vitest": "4.0.18",
