@@ -167,6 +167,7 @@ console.log("Signed in successfully:", data.user);
 | `getNonce`        | `() => Promise<string>`                            | No       | Built-in | Custom function to generate nonces                       |
 | `verifyMessage`   | `(args) => Promise<boolean>`                       | No       | Built-in | Custom signature verification for the signed message     |
 | `resolveProfile`  | `({ walletAddress }) => Promise<{ name, avatar }>` | No       | -        | Resolve a display name and avatar for new wallet users   |
+| `schema`          | `InferOptionSchema`                                | No       | -        | Customize the `walletAddress` model name and columns     |
 
 ### Anonymous Mode
 
@@ -238,6 +239,28 @@ export const auth = betterAuth({
       }),
     }),
   ],
+});
+```
+
+### Custom Schema
+
+Use `schema` to rename the `walletAddress` model or its columns. The override is merged with the plugin schema using better-auth's `mergeSchema`:
+
+```ts
+siws({
+  domain: "example.com",
+  schema: {
+    walletAddress: {
+      modelName: "wallet_address",
+      fields: {
+        userId: "user_id",
+        address: "wallet_address",
+        chainId: "chain_id",
+        isPrimary: "is_primary",
+        createdAt: "created_at",
+      },
+    },
+  },
 });
 ```
 
