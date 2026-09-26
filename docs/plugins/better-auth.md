@@ -57,13 +57,13 @@ export const auth = betterAuth({
 The plugin adds a `walletAddress` table to your database. Run the Better Auth CLI to apply migrations:
 
 ```bash
-npx @better-auth/cli migrate
+npx auth@latest migrate
 ```
 
 Or generate the schema to see the changes:
 
 ```bash
-npx @better-auth/cli generate
+npx auth@latest generate
 ```
 
 The plugin creates the following schema:
