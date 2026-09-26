@@ -90,6 +90,53 @@ test("behavior: time is after expirationTime", () => {
   ).toBeFalsy();
 });
 
+test("behavior: invalid message address", () => {
+  expect(
+    validateSiwsMessage({
+      message: {
+        ...message,
+        address: "not-a-stacks-address",
+      },
+    }),
+  ).toBeFalsy();
+});
+
+test("behavior: unparseable expirationTime", () => {
+  expect(
+    validateSiwsMessage({
+      message: {
+        ...message,
+        expirationTime: new Date("never"),
+      },
+      time: new Date(Date.UTC(2020, 1, 1)),
+    }),
+  ).toBeFalsy();
+});
+
+test("behavior: unparseable notBefore", () => {
+  expect(
+    validateSiwsMessage({
+      message: {
+        ...message,
+        notBefore: new Date("not-a-date"),
+      },
+      time: new Date(Date.UTC(2025, 1, 1)),
+    }),
+  ).toBeFalsy();
+});
+
+test("behavior: invalid time rejects before lifetime checks", () => {
+  expect(
+    validateSiwsMessage({
+      message: {
+        ...message,
+        expirationTime: new Date(Date.UTC(2030, 1, 1)),
+      },
+      time: new Date("never"),
+    }),
+  ).toBeFalsy();
+});
+
 test("behavior: time is before notBefore", () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(Date.UTC(2023, 1, 1)));

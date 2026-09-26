@@ -1,5 +1,5 @@
 import type { ExactPartial, SiwsMessage } from "./types.js";
-import { isAddressEqual } from "./utils.js";
+import { isAddress, isAddressEqual } from "./utils.js";
 
 export type ValidateSiwsMessageParameters = {
   /**
@@ -53,11 +53,23 @@ export function validateSiwsMessage(
   if (nonce && message.nonce !== nonce) return false;
   if (scheme && message.scheme !== scheme) return false;
 
-  if (message.expirationTime && time >= message.expirationTime) return false;
-  if (message.notBefore && time < message.notBefore) return false;
+  // Invalid `time` makes both lifetime comparisons false in JS; reject first.
+  if (Number.isNaN(time.getTime())) return false;
+
+  // Invalid Date (e.g. non-RFC-3339 SIWS timestamp coerced at parse) is truthy;
+  // comparisons against it are always false and would otherwise skip the checks.
+  if (message.expirationTime) {
+    if (Number.isNaN(message.expirationTime.getTime())) return false;
+    if (time >= message.expirationTime) return false;
+  }
+  if (message.notBefore) {
+    if (Number.isNaN(message.notBefore.getTime())) return false;
+    if (time < message.notBefore) return false;
+  }
 
   try {
     if (!message.address) return false;
+    if (!isAddress(message.address)) return false;
     if (address && !isAddressEqual(message.address, address)) return false;
   } catch {
     return false;

@@ -53,6 +53,10 @@ function splitUri(value: string): RegExpMatchArray {
   )!;
 }
 
+export function isAddress(address: string): boolean {
+  return validateStacksAddress(address);
+}
+
 export function isAddressEqual(a: string, b: string): boolean {
   if (!validateStacksAddress(a)) throw new InvalidAddressError({ address: a });
   if (!validateStacksAddress(b)) throw new InvalidAddressError({ address: b });

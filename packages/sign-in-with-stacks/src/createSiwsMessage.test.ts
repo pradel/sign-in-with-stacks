@@ -337,6 +337,27 @@ test("behavior: invalid scheme", () => {
   `);
 });
 
+test("behavior: invalid scheme (comma)", () => {
+  // `[a-zA-Z0-9+-.]` reads `+-.` as a range (+ , - .), so a comma slipped past the
+  // scheme check. RFC 3986 §3.1 allows only `+`, `-` and `.` after the leading letter.
+  expect(() => createSiwsMessage({ ...message, scheme: "ht,tps" }))
+    .toThrowErrorMatchingInlineSnapshot(`
+    [SiwsInvalidMessageFieldError: Invalid Sign-In with Stacks message field "scheme".
+    - Scheme must be an RFC 3986 URI scheme.
+    - See https://www.rfc-editor.org/rfc/rfc3986#section-3.1
+    Provided value: ht,tps]
+  `);
+});
+
+test.each(["https", "a+b", "a-b", "a.b"])(
+  "parameters: valid scheme `%s`",
+  (scheme) => {
+    expect(createSiwsMessage({ ...message, scheme })).toContain(
+      `${scheme}://example.com`,
+    );
+  },
+);
+
 test("behavior: invalid statement", () => {
   expect(() => createSiwsMessage({ ...message, statement: "foo\nbar" }))
     .toThrowErrorMatchingInlineSnapshot(`
