@@ -10,6 +10,5 @@ Upgrade the better-auth plugin to better-auth 1.7 and harden the SIWS flow.
 - Add a `verifyMessage` option for custom signature verification; it defaults to the built-in Stacks verifier
 - `POST /siws/verify` now takes `{ message, signature, email? }`; the wallet address, chain ID, nonce, and time bounds are read from the signed message instead of the request body
 - Bind a caller-supplied email only when it is unclaimed and atomically reserved, falling back to a placeholder email instead of failing
-- Add a `resolveProfile` option to set a display name and avatar on new wallet users
 - Support a custom `walletAddress` schema through the `schema` option, merged with better-auth's `mergeSchema`
 - Generate placeholder emails at `siws.placeholder.invalid`, add an index on `walletAddress.userId`, rename the plugin id to `siws`, expose the plugin `version` and `options`, and register the plugin in `BetterAuthPluginRegistry`
