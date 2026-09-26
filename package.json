@@ -14,8 +14,8 @@
     "release": "cp README.md ./packages/sign-in-with-stacks && changeset publish"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "0.7.0",
-    "@changesets/cli": "2.31.0",
+    "@changesets/changelog-github": "1.0.1",
+    "@changesets/cli": "3.0.3",
     "lefthook": "2.1.9",
     "oxlint": "1.69.0",
     "prettier": "3.9.9",
