@@ -159,12 +159,13 @@ console.log("Signed in successfully:", data.user);
 
 ### Server Plugin Options
 
-| Option            | Type                    | Required | Default  | Description                                              |
-| ----------------- | ----------------------- | -------- | -------- | -------------------------------------------------------- |
-| `domain`          | `string`                | Yes      | -        | Your application's domain (e.g., `example.com`)          |
-| `emailDomainName` | `string`                | No       | Base URL | Domain used for generating user emails in anonymous mode |
-| `anonymous`       | `boolean`               | No       | `true`   | Allow sign-in without requiring an email                 |
-| `getNonce`        | `() => Promise<string>` | No       | Built-in | Custom function to generate nonces                       |
+| Option            | Type                         | Required | Default  | Description                                              |
+| ----------------- | ---------------------------- | -------- | -------- | -------------------------------------------------------- |
+| `domain`          | `string`                     | Yes      | -        | Your application's domain (e.g., `example.com`)          |
+| `emailDomainName` | `string`                     | No       | Base URL | Domain used for generating user emails in anonymous mode |
+| `anonymous`       | `boolean`                    | No       | `true`   | Allow sign-in without requiring an email                 |
+| `getNonce`        | `() => Promise<string>`      | No       | Built-in | Custom function to generate nonces                       |
+| `verifyMessage`   | `(args) => Promise<boolean>` | No       | Built-in | Custom signature verification for the signed message     |
 
 ### Anonymous Mode
 
@@ -192,6 +193,26 @@ export const auth = betterAuth({
       getNonce: async () => {
         // Your custom nonce generation logic
         return randomBytes(32).toString("hex");
+      },
+    }),
+  ],
+});
+```
+
+### Custom Signature Verification
+
+By default the plugin verifies the signature with the built-in Stacks verifier. Provide `verifyMessage` to use your own:
+
+```ts
+import { betterAuth } from "better-auth";
+import { siws } from "sign-in-with-stacks/plugins/better-auth";
+
+export const auth = betterAuth({
+  plugins: [
+    siws({
+      domain: "example.com",
+      verifyMessage: async ({ message, signature, address, chainId }) => {
+        return myVerifier({ message, signature, address, chainId });
       },
     }),
   ],

@@ -5,7 +5,7 @@ import z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { parseSiwsMessage } from "../../parseSiwsMessage.js";
 import { schema } from "./schema.js";
-import type { WalletAddress } from "./types.js";
+import type { SIWSVerifyMessageArgs, WalletAddress } from "./types.js";
 
 export interface SIWSPluginOptions {
   // The domain name of your application (required for SIWS message generation)
@@ -16,6 +16,9 @@ export interface SIWSPluginOptions {
   anonymous?: boolean | undefined;
   // Function to generate a unique nonce for each sign-in attempt. You must implement this function to return a cryptographically secure random string. Must return a Promise<string>
   getNonce?: () => Promise<string>;
+  // Function to verify the SIWS message signature. Defaults to the built-in Stacks verifier
+  verifyMessage?:
+    ((args: SIWSVerifyMessageArgs) => Promise<boolean>) | undefined;
 }
 
 const SIWS_VERIFICATION_IDENTIFIER_PREFIX = "siws:";
@@ -32,8 +35,21 @@ const isValidSiwsNonce = (nonce: string | undefined): nonce is string =>
   nonce.length <= SIWS_NONCE_MAX_LENGTH &&
   SIWS_NONCE_ALPHANUMERIC_REGEX.test(nonce);
 
-export const siws = (options: SIWSPluginOptions) =>
-  ({
+export const siws = (options: SIWSPluginOptions) => {
+  const verifyMessage =
+    options.verifyMessage ??
+    (async (args: SIWSVerifyMessageArgs) => {
+      const { nonce } = parseSiwsMessage(args.message);
+      return verifySiwsMessage({
+        message: args.message,
+        signature: args.signature,
+        address: args.address,
+        domain: options.domain,
+        nonce,
+      });
+    });
+
+  return {
     id: "sign-in-with-stacks",
     schema: schema,
     endpoints: {
@@ -134,15 +150,14 @@ export const siws = (options: SIWSPluginOptions) =>
             }
 
             // Verify SIWS message
-            const valid = verifySiwsMessage({
+            const verified = await verifyMessage({
               message,
               signature,
               address: walletAddress,
-              domain: options.domain,
-              nonce,
+              chainId,
             });
 
-            if (!valid) {
+            if (!verified) {
               throw new APIError("UNAUTHORIZED", {
                 message: "Unauthorized: Invalid SIWS signature",
                 status: 401,
@@ -294,7 +309,8 @@ export const siws = (options: SIWSPluginOptions) =>
         },
       ),
     },
-  }) satisfies BetterAuthPlugin;
+  } satisfies BetterAuthPlugin;
+};
 
 function getOrigin(url: string) {
   try {
