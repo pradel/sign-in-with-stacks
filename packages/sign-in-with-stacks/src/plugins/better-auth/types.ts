@@ -6,3 +6,10 @@ export interface WalletAddress {
   isPrimary: boolean;
   createdAt: Date;
 }
+
+export interface SIWSVerifyMessageArgs {
+  message: string;
+  signature: string;
+  address: string;
+  chainId: number;
+}

@@ -10,6 +10,7 @@ import { describe, expect, test } from "vitest";
 import { accounts } from "../../../test/constants.js";
 import { createSiwsMessage } from "../../createSiwsMessage.js";
 import { siws } from "./plugin.js";
+import type { SIWSVerifyMessageArgs } from "./types.js";
 
 const account = accounts[0];
 
@@ -226,6 +227,71 @@ describe("verify endpoint", () => {
         walletAddress: account.address,
         message,
         signature: invalidSignature,
+        chainId: STACKS_TESTNET.chainId,
+      }),
+    ).rejects.toThrow();
+  });
+
+  test("supports a custom verifyMessage", async () => {
+    const calls: SIWSVerifyMessageArgs[] = [];
+    const { auth } = await createTestInstance({
+      domain: "localhost:3000",
+      verifyMessage: async (args) => {
+        calls.push(args);
+        return true;
+      },
+    });
+    const nonce = await getNonceFromApi(auth);
+
+    const message = createSiwsMessage({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+
+    const signature = signMessage(message, account.privateKey);
+    const res = await verifyWithApi(auth, {
+      walletAddress: account.address,
+      message,
+      signature,
+      chainId: STACKS_TESTNET.chainId,
+    });
+
+    expect(res.success).toBe(true);
+    expect(calls).toHaveLength(1);
+    const [call] = calls;
+    expect(call?.address).toBe(account.address);
+    expect(call?.chainId).toBe(STACKS_TESTNET.chainId);
+    expect(call?.message).toBe(message);
+    expect(call?.signature).toBe(signature);
+  });
+
+  test("rejects a signature when a custom verifyMessage returns false", async () => {
+    const { auth } = await createTestInstance({
+      domain: "localhost:3000",
+      verifyMessage: async () => false,
+    });
+    const nonce = await getNonceFromApi(auth);
+
+    const message = createSiwsMessage({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+
+    const signature = signMessage(message, account.privateKey);
+
+    await expect(
+      verifyWithApi(auth, {
+        walletAddress: account.address,
+        message,
+        signature,
         chainId: STACKS_TESTNET.chainId,
       }),
     ).rejects.toThrow();
