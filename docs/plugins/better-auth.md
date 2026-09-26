@@ -142,8 +142,6 @@ Send the message and signature to the server for verification:
 const { data, error } = await authClient.siws.verify({
   message: message,
   signature: signature,
-  walletAddress: "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
-  chainId: 1, // optional, defaults to Stacks mainnet (1)
   email: "user@example.com", // optional, required if anonymous is false
 });
 
@@ -159,23 +157,25 @@ console.log("Signed in successfully:", data.user);
 
 ### Server Plugin Options
 
-| Option            | Type                         | Required | Default  | Description                                              |
-| ----------------- | ---------------------------- | -------- | -------- | -------------------------------------------------------- |
-| `domain`          | `string`                     | Yes      | -        | Your application's domain (e.g., `example.com`)          |
-| `emailDomainName` | `string`                     | No       | Base URL | Domain used for generating user emails in anonymous mode |
-| `anonymous`       | `boolean`                    | No       | `true`   | Allow sign-in without requiring an email                 |
-| `getNonce`        | `() => Promise<string>`      | No       | Built-in | Custom function to generate nonces                       |
-| `verifyMessage`   | `(args) => Promise<boolean>` | No       | Built-in | Custom signature verification for the signed message     |
+| Option            | Type                                               | Required | Default            | Description                                                     |
+| ----------------- | -------------------------------------------------- | -------- | ------------------ | --------------------------------------------------------------- |
+| `domain`          | `string`                                           | Yes      | -                  | Your application's domain (e.g., `example.com`)                 |
+| `emailDomainName` | `string`                                           | No       | Placeholder domain | Domain used for generating user emails in anonymous mode        |
+| `anonymous`       | `boolean`                                          | No       | `true`             | Allow sign-in without requiring an email                        |
+| `getNonce`        | `() => Promise<string>`                            | No       | Built-in           | Custom function to generate nonces (8+ alphanumeric characters) |
+| `verifyMessage`   | `(args) => Promise<boolean>`                       | No       | Built-in           | Custom signature verification for the signed message            |
+| `resolveProfile`  | `({ walletAddress }) => Promise<{ name, avatar }>` | No       | -                  | Resolve a display name and avatar for new wallet users          |
+| `schema`          | `InferOptionSchema`                                | No       | -                  | Customize the `walletAddress` model name and columns            |
 
 ### Anonymous Mode
 
 When `anonymous` is `true` (default), users can sign in without providing an email. The plugin will generate a placeholder email using the wallet address:
 
 ```
-SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173@example.com
+sp2x0tz59d5sz8acq6ymchhnr2zn51z32e2cj173@siws.placeholder.invalid
 ```
 
-When `anonymous` is `false`, the `email` parameter is required in the `verify` call, and users must provide a valid email address.
+When `anonymous` is `false`, the `email` parameter is required in the `verify` call, and users must provide a valid email address. The email is only bound to the new account when it is not already claimed by another account; otherwise the placeholder email is used and the sign-in still succeeds.
 
 ### Custom Nonce Generation
 
@@ -219,13 +219,56 @@ export const auth = betterAuth({
 });
 ```
 
+### Profile Resolution
+
+Use `resolveProfile` to set a display name and avatar on new wallet users, for example from BNS:
+
+```ts
+import { betterAuth } from "better-auth";
+import { siws } from "sign-in-with-stacks/plugins/better-auth";
+
+export const auth = betterAuth({
+  plugins: [
+    siws({
+      domain: "example.com",
+      resolveProfile: async ({ walletAddress }) => ({
+        name: await lookupBnsName(walletAddress),
+        avatar: await lookupAvatar(walletAddress),
+      }),
+    }),
+  ],
+});
+```
+
+### Custom Schema
+
+Use `schema` to rename the `walletAddress` model or its columns. The override is merged with the plugin schema using better-auth's `mergeSchema`:
+
+```ts
+siws({
+  domain: "example.com",
+  schema: {
+    walletAddress: {
+      modelName: "wallet_address",
+      fields: {
+        userId: "user_id",
+        address: "wallet_address",
+        chainId: "chain_id",
+        isPrimary: "is_primary",
+        createdAt: "created_at",
+      },
+    },
+  },
+});
+```
+
 ## API Reference
 
 ### Server Endpoints
 
 #### `POST /api/auth/siws/nonce`
 
-Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or chain.
+Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or chain; identity is taken from the signed message at verification time.
 
 **Request Body:**
 
@@ -243,16 +286,14 @@ Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or cha
 
 #### `POST /api/auth/siws/verify`
 
-Verifies a signed SIWS message and creates a session.
+Verifies a signed SIWS message and creates a session. The wallet address, chain ID, nonce, and time bounds are read from the signed message.
 
 **Request Body:**
 
 ```json
 {
-  "walletAddress": "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
   "message": "example.com wants you to sign in with your Stacks account...",
   "signature": "0x...",
-  "chainId": 1,
   "email": "user@example.com"
 }
 ```
@@ -281,13 +322,11 @@ Request a nonce for signing. Takes no parameters.
 
 Verify a signature and create a session.
 
-| Parameter       | Type     | Required | Description                                   |
-| --------------- | -------- | -------- | --------------------------------------------- |
-| `walletAddress` | `string` | Yes      | The user's Stacks address                     |
-| `message`       | `string` | Yes      | The SIWS message that was signed              |
-| `signature`     | `string` | Yes      | The signature from the wallet                 |
-| `chainId`       | `number` | No       | Chain ID (defaults to mainnet)                |
-| `email`         | `string` | No       | User's email (required if anonymous is false) |
+| Parameter   | Type     | Required | Description                                   |
+| ----------- | -------- | -------- | --------------------------------------------- |
+| `message`   | `string` | Yes      | The SIWS message that was signed              |
+| `signature` | `string` | Yes      | The signature from the wallet                 |
+| `email`     | `string` | No       | User's email (required if anonymous is false) |
 
 ## Error Handling
 
@@ -302,6 +341,13 @@ if (error) {
   switch (error.code) {
     case "UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE":
       // Nonce expired, request a new one
+      break;
+    case "UNAUTHORIZED_SIWS_MESSAGE_MISMATCH":
+      // Message does not match the expected domain, address, or chain ID
+      break;
+    case "UNAUTHORIZED_SIWS_MESSAGE_EXPIRED":
+    case "UNAUTHORIZED_SIWS_MESSAGE_NOT_YET_VALID":
+      // Message is outside its signed time bounds
       break;
     case "UNAUTHORIZED":
       // Invalid signature

@@ -41,8 +41,6 @@ export default function Home() {
     const { data, error } = await authClient.siws.verify({
       message,
       signature: signResult.signature,
-      walletAddress: stxAddress.address,
-      chainId: STACKS_MAINNET.chainId,
     });
 
     if (error) {

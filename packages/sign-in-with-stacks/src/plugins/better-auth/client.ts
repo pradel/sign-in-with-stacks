@@ -5,5 +5,9 @@ export const siwsClient = () => {
   return {
     id: "siws",
     $InferServerPlugin: {} as ReturnType<typeof siws>,
+    pathMethods: {
+      "/siws/nonce": "POST",
+      "/siws/verify": "POST",
+    },
   } satisfies BetterAuthClientPlugin;
 };
