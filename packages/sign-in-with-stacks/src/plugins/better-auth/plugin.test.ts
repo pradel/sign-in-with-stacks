@@ -501,3 +501,57 @@ describe("resolveProfile", () => {
     expect(user?.image).toBe("https://example.com/avatar.png");
   });
 });
+
+describe("custom schema", () => {
+  test("merges a custom walletAddress schema", async () => {
+    const { auth } = await createTestInstance({
+      domain: "localhost:3000",
+      schema: {
+        walletAddress: {
+          modelName: "wallet_address",
+          fields: {
+            userId: "user_id",
+            address: "wallet_address",
+            chainId: "chain_id",
+            isPrimary: "is_primary",
+            createdAt: "created_at",
+          },
+        },
+      },
+    });
+    const nonce = await getNonceFromApi(auth);
+
+    const message = createSiwsMessage({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+
+    const signature = signMessage(message, account.privateKey);
+    const res = await verifyWithApi(auth, {
+      walletAddress: account.address,
+      message,
+      signature,
+      chainId: STACKS_TESTNET.chainId,
+    });
+    expect(res.success).toBe(true);
+
+    const ctx = await auth.$context;
+    const wallets = await ctx.adapter.findMany({
+      model: "walletAddress",
+      where: [
+        { field: "address", operator: "eq", value: account.address },
+        { field: "chainId", operator: "eq", value: STACKS_TESTNET.chainId },
+      ],
+    });
+    expect(wallets).toHaveLength(1);
+    expect(wallets[0]).toMatchObject({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      isPrimary: true,
+    });
+  });
+});

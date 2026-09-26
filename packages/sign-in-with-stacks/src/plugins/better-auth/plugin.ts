@@ -1,10 +1,11 @@
-import type { BetterAuthPlugin, User } from "better-auth";
+import type { BetterAuthPlugin, InferOptionSchema, User } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
+import { mergeSchema } from "better-auth/db";
 import z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { parseSiwsMessage } from "../../parseSiwsMessage.js";
-import { schema } from "./schema.js";
+import { schema, type WalletAddressSchema } from "./schema.js";
 import type {
   ResolveProfileArgs,
   ResolveProfileResult,
@@ -27,6 +28,8 @@ export interface SIWSPluginOptions {
   // Function to resolve a display name and avatar for a new wallet user
   resolveProfile?:
     ((args: ResolveProfileArgs) => Promise<ResolveProfileResult>) | undefined;
+  // Custom schema for the plugin's walletAddress table
+  schema?: InferOptionSchema<typeof schema> | undefined;
 }
 
 const SIWS_VERIFICATION_IDENTIFIER_PREFIX = "siws:";
@@ -59,7 +62,7 @@ export const siws = (options: SIWSPluginOptions) => {
 
   return {
     id: "sign-in-with-stacks",
-    schema: schema,
+    schema: mergeSchema(schema, options?.schema) as WalletAddressSchema,
     endpoints: {
       nonce: createAuthEndpoint(
         "/siws/nonce",
