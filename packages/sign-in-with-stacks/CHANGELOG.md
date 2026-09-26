@@ -1,5 +1,16 @@
 # sign-in-with-stacks
 
+## 0.3.1
+
+### Patch Changes
+
+- [#20](https://github.com/pradel/sign-in-with-stacks/pull/20) [`c05b47f`](https://github.com/pradel/sign-in-with-stacks/commit/c05b47f429df0a6453ffaa542ff3624482fad483) Thanks [@pradel](https://github.com/pradel)! - Harden message parsing and validation with fixes ported from viem's SIWE implementation.
+
+  - Reject unparseable `Expiration Time`, `Not Before`, and `Issued At` timestamps, and invalid `time` inputs, instead of silently skipping lifetime checks
+  - Validate `message.address` in `validateSiwsMessage` when no expected `address` is passed
+  - Reject commas in URI schemes in `createSiwsMessage` and `parseSiwsMessage`
+  - Parse `resources` only from the `Resources:` section
+
 ## 0.3.0
 
 ### Minor Changes
