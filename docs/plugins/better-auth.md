@@ -159,13 +159,14 @@ console.log("Signed in successfully:", data.user);
 
 ### Server Plugin Options
 
-| Option            | Type                         | Required | Default  | Description                                              |
-| ----------------- | ---------------------------- | -------- | -------- | -------------------------------------------------------- |
-| `domain`          | `string`                     | Yes      | -        | Your application's domain (e.g., `example.com`)          |
-| `emailDomainName` | `string`                     | No       | Base URL | Domain used for generating user emails in anonymous mode |
-| `anonymous`       | `boolean`                    | No       | `true`   | Allow sign-in without requiring an email                 |
-| `getNonce`        | `() => Promise<string>`      | No       | Built-in | Custom function to generate nonces                       |
-| `verifyMessage`   | `(args) => Promise<boolean>` | No       | Built-in | Custom signature verification for the signed message     |
+| Option            | Type                                               | Required | Default  | Description                                              |
+| ----------------- | -------------------------------------------------- | -------- | -------- | -------------------------------------------------------- |
+| `domain`          | `string`                                           | Yes      | -        | Your application's domain (e.g., `example.com`)          |
+| `emailDomainName` | `string`                                           | No       | Base URL | Domain used for generating user emails in anonymous mode |
+| `anonymous`       | `boolean`                                          | No       | `true`   | Allow sign-in without requiring an email                 |
+| `getNonce`        | `() => Promise<string>`                            | No       | Built-in | Custom function to generate nonces                       |
+| `verifyMessage`   | `(args) => Promise<boolean>`                       | No       | Built-in | Custom signature verification for the signed message     |
+| `resolveProfile`  | `({ walletAddress }) => Promise<{ name, avatar }>` | No       | -        | Resolve a display name and avatar for new wallet users   |
 
 ### Anonymous Mode
 
@@ -214,6 +215,27 @@ export const auth = betterAuth({
       verifyMessage: async ({ message, signature, address, chainId }) => {
         return myVerifier({ message, signature, address, chainId });
       },
+    }),
+  ],
+});
+```
+
+### Profile Resolution
+
+Use `resolveProfile` to set a display name and avatar on new wallet users, for example from BNS:
+
+```ts
+import { betterAuth } from "better-auth";
+import { siws } from "sign-in-with-stacks/plugins/better-auth";
+
+export const auth = betterAuth({
+  plugins: [
+    siws({
+      domain: "example.com",
+      resolveProfile: async ({ walletAddress }) => ({
+        name: await lookupBnsName(walletAddress),
+        avatar: await lookupAvatar(walletAddress),
+      }),
     }),
   ],
 });

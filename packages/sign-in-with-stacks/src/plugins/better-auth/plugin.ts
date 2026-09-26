@@ -5,7 +5,12 @@ import z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { parseSiwsMessage } from "../../parseSiwsMessage.js";
 import { schema } from "./schema.js";
-import type { SIWSVerifyMessageArgs, WalletAddress } from "./types.js";
+import type {
+  ResolveProfileArgs,
+  ResolveProfileResult,
+  SIWSVerifyMessageArgs,
+  WalletAddress,
+} from "./types.js";
 
 export interface SIWSPluginOptions {
   // The domain name of your application (required for SIWS message generation)
@@ -19,6 +24,9 @@ export interface SIWSPluginOptions {
   // Function to verify the SIWS message signature. Defaults to the built-in Stacks verifier
   verifyMessage?:
     ((args: SIWSVerifyMessageArgs) => Promise<boolean>) | undefined;
+  // Function to resolve a display name and avatar for a new wallet user
+  resolveProfile?:
+    ((args: ResolveProfileArgs) => Promise<ResolveProfileResult>) | undefined;
 }
 
 const SIWS_VERIFICATION_IDENTIFIER_PREFIX = "siws:";
@@ -221,11 +229,14 @@ export const siws = (options: SIWSPluginOptions) => {
               // Use checksummed address for email generation
               const userEmail =
                 !isAnon && email ? email : `${walletAddress}@${domain}`;
+              const { name, avatar } =
+                (await options.resolveProfile?.({ walletAddress })) ?? {};
 
               user = await ctx.context.internalAdapter.createUser(
                 {
-                  name: walletAddress,
+                  name: name ?? walletAddress,
                   email: userEmail,
+                  image: avatar ?? "",
                 },
                 { method: "siws" },
               );

@@ -463,3 +463,41 @@ describe("verify endpoint", () => {
     expect(user?.email).toBe(`${account.address.toLowerCase()}@myapp.com`);
   });
 });
+
+describe("resolveProfile", () => {
+  test("sets the user name and image", async () => {
+    const { auth, db } = await createTestInstance({
+      domain: "localhost:3000",
+      resolveProfile: async ({ walletAddress }) => ({
+        name: `bns:${walletAddress}`,
+        avatar: "https://example.com/avatar.png",
+      }),
+    });
+    const nonce = await getNonceFromApi(auth);
+
+    const message = createSiwsMessage({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await verifyWithApi(auth, {
+      walletAddress: account.address,
+      message,
+      signature,
+      chainId: STACKS_TESTNET.chainId,
+    });
+
+    const user = await db.findOne<{ name: string; image: string }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: res.user.id }],
+    });
+    expect(user?.name).toBe(`bns:${account.address}`);
+    expect(user?.image).toBe("https://example.com/avatar.png");
+  });
+});
