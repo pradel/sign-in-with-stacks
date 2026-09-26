@@ -94,14 +94,15 @@ export const siws = (options: SIWSPluginOptions) =>
           }
 
           try {
-            // Find stored nonce with wallet address and chain ID context
+            // Atomically consume the single-use nonce before any signature
+            // work. The first concurrent request wins; every racer gets null.
+            // Expired nonces are treated as already consumed.
             const verification =
-              await ctx.context.internalAdapter.findVerificationValue(
+              await ctx.context.internalAdapter.consumeVerificationValue(
                 `siws:${walletAddress.toLowerCase()}:${chainId}`,
               );
 
-            // Ensure nonce is valid and not expired
-            if (!verification || new Date() > verification.expiresAt) {
+            if (!verification) {
               throw new APIError("UNAUTHORIZED", {
                 message: "Unauthorized: Invalid or expired nonce",
                 status: 401,
@@ -125,11 +126,6 @@ export const siws = (options: SIWSPluginOptions) =>
                 status: 401,
               });
             }
-
-            // Clean up used nonce
-            await ctx.context.internalAdapter.deleteVerificationValue(
-              verification.id,
-            );
 
             // Look for existing user by their wallet addresses
             let user: User | null = null;
@@ -189,10 +185,13 @@ export const siws = (options: SIWSPluginOptions) =>
               const userEmail =
                 !isAnon && email ? email : `${walletAddress}@${domain}`;
 
-              user = await ctx.context.internalAdapter.createUser({
-                name: walletAddress,
-                email: userEmail,
-              });
+              user = await ctx.context.internalAdapter.createUser(
+                {
+                  name: walletAddress,
+                  email: userEmail,
+                },
+                { method: "siws" },
+              );
 
               // Create wallet address record
               await ctx.context.adapter.create<WalletAddress>({

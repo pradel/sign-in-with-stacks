@@ -4,7 +4,8 @@ import { hashMessage } from "@stacks/encryption";
 import { STACKS_TESTNET } from "@stacks/network";
 import { signMessageHashRsv } from "@stacks/transactions";
 import { betterAuth } from "better-auth";
-import { getAdapter, getMigrations } from "better-auth/db";
+import { getAdapter } from "better-auth/db/adapter";
+import { getMigrations } from "better-auth/db/migration";
 import { describe, expect, test } from "vitest";
 import { accounts } from "../../../test/constants.js";
 import { createSiwsMessage } from "../../createSiwsMessage.js";
@@ -76,6 +77,7 @@ async function verifyWithApi(
       method: "POST",
     }),
     headers: new Headers(),
+    asResponse: false,
   });
 }
 
