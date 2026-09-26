@@ -82,6 +82,58 @@ test("behavior: invalid address not matching signature", async () => {
   ).toBeFalsy();
 });
 
+test("behavior: unparseable expirationTime does not bypass expiration", async () => {
+  const message = createSiwsMessage({
+    address: account.address,
+    chainId: STACKS_TESTNET.chainId,
+    domain: "example.com",
+    expirationTime: new Date(Date.UTC(2000, 0, 1)),
+    nonce: "foobarbaz",
+    uri: "https://example.com/path",
+    version: "1",
+  });
+  const raw = message.replace(/Expiration Time: .*/, "Expiration Time: never");
+
+  const hash = hashMessage(raw);
+  const signature = signMessageHashRsv({
+    messageHash: bytesToHex(hash),
+    privateKey: account.privateKey,
+  });
+
+  expect(
+    verifySiwsMessage({
+      message: raw,
+      signature,
+    }),
+  ).toBeFalsy();
+});
+
+test("behavior: unparseable notBefore does not bypass notBefore", async () => {
+  const message = createSiwsMessage({
+    address: account.address,
+    chainId: STACKS_TESTNET.chainId,
+    domain: "example.com",
+    notBefore: new Date(Date.UTC(2099, 0, 1)),
+    nonce: "foobarbaz",
+    uri: "https://example.com/path",
+    version: "1",
+  });
+  const raw = message.replace(/Not Before: .*/, "Not Before: never");
+
+  const hash = hashMessage(raw);
+  const signature = signMessageHashRsv({
+    messageHash: bytesToHex(hash),
+    privateKey: account.privateKey,
+  });
+
+  expect(
+    verifySiwsMessage({
+      message: raw,
+      signature,
+    }),
+  ).toBeFalsy();
+});
+
 test("behavior: invalid message", async () => {
   const message = "foobarbaz";
   const hash = hashMessage(message);

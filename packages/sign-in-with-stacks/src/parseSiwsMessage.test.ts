@@ -40,6 +40,36 @@ Issued At: 2023-02-01T00:00:00.000Z`;
   expect(parsed.scheme).toMatchInlineSnapshot(`"https"`);
 });
 
+test("behavior: scheme with a comma is not a scheme", () => {
+  // `[a-zA-Z0-9+-.]` reads `+-.` as a range (+ , - .), which also matches `,`.
+  // RFC 3986 §3.1 allows only `+`, `-` and `.` after the leading letter.
+  const message = `ht,tps://example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed.scheme).toBeUndefined();
+  expect(parsed.domain).toBeUndefined();
+});
+
+test("behavior: schemes using the punctuation RFC 3986 does allow", () => {
+  for (const scheme of ["https", "a+b", "a-b", "a.b"]) {
+    const message = `${scheme}://example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z`;
+    expect(parseSiwsMessage(message).scheme).toBe(scheme);
+  }
+});
+
 test("behavior: domain with port", () => {
   const message = `example.com:8080 wants you to sign in with your Stacks account:
 SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
@@ -135,6 +165,152 @@ Resources:
       "https://example.com/foo",
       "https://example.com/bar",
       "https://example.com/baz",
+    ]
+  `);
+});
+
+test("behavior: non-RFC3339 expirationTime yields Invalid Date", () => {
+  const message = `https://example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z
+Expiration Time: never`;
+  const parsed = parseSiwsMessage(message);
+  expect(Number.isNaN(parsed.expirationTime?.getTime())).toBeTruthy();
+});
+
+test('behavior: "Resources:" in statement', () => {
+  const message = `example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+See the Resources: list below.
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z
+Resources:
+- https://example.com/foo
+- https://example.com/bar`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed).toMatchInlineSnapshot(`
+    {
+      "address": "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
+      "chainId": 1,
+      "domain": "example.com",
+      "issuedAt": 2023-02-01T00:00:00.000Z,
+      "nonce": "foobarbaz",
+      "resources": [
+        "https://example.com/foo",
+        "https://example.com/bar",
+      ],
+      "statement": "See the Resources: list below.",
+      "uri": "https://example.com/path",
+      "version": "1",
+    }
+  `);
+});
+
+test('behavior: "Resources:" in statement without resources', () => {
+  const message = `example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+See the Resources: page.
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed.resources).toBeUndefined();
+});
+
+test('behavior: "Resources:" in uri', () => {
+  const message = `example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+
+URI: https://example.com/Resources:path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z
+Resources:
+- https://example.com/foo`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed.resources).toMatchInlineSnapshot(`
+    [
+      "https://example.com/foo",
+    ]
+  `);
+});
+
+test('behavior: "Resources:" in requestId', () => {
+  const message = `example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z
+Request ID: Resources:123
+Resources:
+- https://example.com/foo`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed.resources).toMatchInlineSnapshot(`
+    [
+      "https://example.com/foo",
+    ]
+  `);
+});
+
+test('behavior: "Resources:" in a resource', () => {
+  const message = `example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z
+Resources:
+- https://example.com/Resources:foo
+- https://example.com/bar`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed.resources).toMatchInlineSnapshot(`
+    [
+      "https://example.com/Resources:foo",
+      "https://example.com/bar",
+    ]
+  `);
+});
+
+test("behavior: empty requestId with resources", () => {
+  // SIP-X allows an empty Request ID (`request-id = *pchar`).
+  const message = `example.com wants you to sign in with your Stacks account:
+SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
+
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z
+Request ID: \nResources:
+- https://example.com/foo`;
+  const parsed = parseSiwsMessage(message);
+  expect(parsed.resources).toMatchInlineSnapshot(`
+    [
+      "https://example.com/foo",
     ]
   `);
 });
