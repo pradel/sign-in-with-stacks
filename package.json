@@ -11,7 +11,8 @@
     "format:check": "prettier --check --ignore-unknown .",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "cp README.md ./packages/sign-in-with-stacks && changeset publish"
+    "release": "cp README.md ./packages/sign-in-with-stacks && changeset publish",
+    "repos:sync": "./scripts/sync-repos.sh"
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",
