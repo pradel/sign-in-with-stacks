@@ -19,10 +19,7 @@ export default function Home() {
     }
 
     const { data: nonceResult, error: nonceError } =
-      await authClient.siws.nonce({
-        walletAddress: stxAddress.address,
-        chainId: STACKS_MAINNET.chainId,
-      });
+      await authClient.siws.nonce();
 
     if (nonceError) {
       throw new Error(`Error getting nonce: ${nonceError.message}`);

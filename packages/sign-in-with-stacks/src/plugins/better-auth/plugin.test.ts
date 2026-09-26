@@ -44,12 +44,8 @@ async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
 
 async function getNonceFromApi(
   auth: Awaited<ReturnType<typeof createTestInstance>>["auth"],
-  walletAddress: string,
-  chainId?: number,
 ) {
-  const res = await auth.api.nonce({
-    body: { walletAddress, ...(chainId !== undefined ? { chainId } : {}) },
-  });
+  const res = await auth.api.nonce();
   return res.nonce as string;
 }
 
@@ -101,11 +97,10 @@ describe("siws plugin", () => {
 });
 
 describe("nonce endpoint", () => {
-  test("returns a nonce for a valid wallet address", async () => {
+  test("returns a nonce without wallet inputs", async () => {
     const { auth } = await createTestInstance();
-    const nonce = await getNonceFromApi(auth, account.address);
-    expect(nonce).toBeTypeOf("string");
-    expect(nonce.length).toBeGreaterThanOrEqual(8);
+    const nonce = await getNonceFromApi(auth);
+    expect(nonce).toMatch(/^[a-zA-Z0-9]{8,}$/);
   });
 
   test("uses custom getNonce when provided", async () => {
@@ -114,36 +109,35 @@ describe("nonce endpoint", () => {
       domain: "localhost:3000",
       getNonce: async () => customNonce,
     });
-    const nonce = await getNonceFromApi(auth, account.address);
+    const nonce = await getNonceFromApi(auth);
     expect(nonce).toBe(customNonce);
   });
 
-  test("defaults chainId to mainnet", async () => {
+  test("rejects obsolete wallet-bound inputs", async () => {
     const { auth } = await createTestInstance();
-    // Verify we get a nonce back when not specifying chainId
-    const nonce = await getNonceFromApi(auth, account.address);
-    expect(nonce).toBeTypeOf("string");
+    const res = await auth.handler(
+      new Request("http://localhost:3000/api/auth/siws/nonce", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ walletAddress: account.address, chainId: 1 }),
+      }),
+    );
+    expect(res.status).toBe(400);
   });
 
-  test("accepts testnet chain id", async () => {
-    const { auth } = await createTestInstance();
-    const nonce = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
-    expect(nonce).toBeTypeOf("string");
+  test("rejects a nonce that does not follow the expected format", async () => {
+    const { auth } = await createTestInstance({
+      domain: "localhost:3000",
+      getNonce: async () => "not-a-valid-nonce!",
+    });
+    await expect(getNonceFromApi(auth)).rejects.toThrow(/getNonce/);
   });
 });
 
 describe("verify endpoint", () => {
   test("successfully authenticates a new user", async () => {
     const { auth } = await createTestInstance();
-    const nonce = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce = await getNonceFromApi(auth);
 
     const message = createSiwsMessage({
       address: account.address,
@@ -173,11 +167,7 @@ describe("verify endpoint", () => {
     const { auth } = await createTestInstance();
 
     // First sign-in
-    const nonce1 = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce1 = await getNonceFromApi(auth);
     const message1 = createSiwsMessage({
       address: account.address,
       chainId: STACKS_TESTNET.chainId,
@@ -195,11 +185,7 @@ describe("verify endpoint", () => {
     });
 
     // Second sign-in
-    const nonce2 = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce2 = await getNonceFromApi(auth);
     const message2 = createSiwsMessage({
       address: account.address,
       chainId: STACKS_TESTNET.chainId,
@@ -221,11 +207,7 @@ describe("verify endpoint", () => {
 
   test("rejects invalid signature", async () => {
     const { auth } = await createTestInstance();
-    const nonce = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce = await getNonceFromApi(auth);
 
     const message = createSiwsMessage({
       address: account.address,
@@ -276,11 +258,7 @@ describe("verify endpoint", () => {
 
   test("prevents nonce reuse", async () => {
     const { auth } = await createTestInstance();
-    const nonce = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce = await getNonceFromApi(auth);
 
     const message = createSiwsMessage({
       address: account.address,
@@ -316,11 +294,7 @@ describe("verify endpoint", () => {
     const { auth } = await createTestInstance();
 
     // Sign in on testnet
-    const nonce1 = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce1 = await getNonceFromApi(auth);
     const message1 = createSiwsMessage({
       address: account.address,
       chainId: STACKS_TESTNET.chainId,
@@ -339,7 +313,7 @@ describe("verify endpoint", () => {
 
     // Sign in on a different chain with same address
     const chainIdB = 2;
-    const nonce2 = await getNonceFromApi(auth, account.address, chainIdB);
+    const nonce2 = await getNonceFromApi(auth);
     const message2 = createSiwsMessage({
       address: account.address,
       chainId: chainIdB,
@@ -362,11 +336,7 @@ describe("verify endpoint", () => {
 
   test("generates email in anonymous mode", async () => {
     const { auth, db } = await createTestInstance();
-    const nonce = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce = await getNonceFromApi(auth);
 
     const message = createSiwsMessage({
       address: account.address,
@@ -400,11 +370,7 @@ describe("verify endpoint", () => {
       emailDomainName: "myapp.com",
     });
 
-    const nonce = await getNonceFromApi(
-      auth,
-      account.address,
-      STACKS_TESTNET.chainId,
-    );
+    const nonce = await getNonceFromApi(auth);
 
     const message = createSiwsMessage({
       address: account.address,

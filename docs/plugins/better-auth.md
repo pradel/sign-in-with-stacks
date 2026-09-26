@@ -97,10 +97,7 @@ export const authClient = createAuthClient({
 Before signing in, request a nonce from the server. This nonce is used to prevent replay attacks:
 
 ```ts
-const { data, error } = await authClient.siws.nonce({
-  walletAddress: "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
-  chainId: 1, // optional, defaults to Stacks mainnet (1)
-});
+const { data, error } = await authClient.siws.nonce();
 
 if (error) {
   console.error("Failed to get nonce:", error);
@@ -207,15 +204,12 @@ export const auth = betterAuth({
 
 #### `POST /api/auth/siws/nonce`
 
-Generates a nonce for the SIWS flow.
+Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or chain.
 
 **Request Body:**
 
 ```json
-{
-  "walletAddress": "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
-  "chainId": 1
-}
+{}
 ```
 
 **Response:**
@@ -258,14 +252,9 @@ Verifies a signed SIWS message and creates a session.
 
 ### Client Methods
 
-#### `authClient.siws.nonce(options)`
+#### `authClient.siws.nonce()`
 
-Request a nonce for signing.
-
-| Parameter       | Type     | Required | Description                    |
-| --------------- | -------- | -------- | ------------------------------ |
-| `walletAddress` | `string` | Yes      | The user's Stacks address      |
-| `chainId`       | `number` | No       | Chain ID (defaults to mainnet) |
+Request a nonce for signing. Takes no parameters.
 
 #### `authClient.siws.verify(options)`
 
