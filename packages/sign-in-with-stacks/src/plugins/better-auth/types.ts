@@ -13,3 +13,12 @@ export interface SIWSVerifyMessageArgs {
   address: string;
   chainId: number;
 }
+
+export interface ResolveProfileArgs {
+  walletAddress: string;
+}
+
+export interface ResolveProfileResult {
+  name: string;
+  avatar: string;
+}
