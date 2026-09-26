@@ -3,6 +3,7 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
+import { parseSiwsMessage } from "../../parseSiwsMessage.js";
 import { schema } from "./schema.js";
 import type { WalletAddress } from "./types.js";
 
@@ -17,6 +18,20 @@ export interface SIWSPluginOptions {
   getNonce?: () => Promise<string>;
 }
 
+const SIWS_VERIFICATION_IDENTIFIER_PREFIX = "siws:";
+// MySQL adapter schemas cap verification.identifier at 255 characters.
+const VERIFICATION_IDENTIFIER_MAX_LENGTH = 255;
+const SIWS_NONCE_MAX_LENGTH =
+  VERIFICATION_IDENTIFIER_MAX_LENGTH -
+  SIWS_VERIFICATION_IDENTIFIER_PREFIX.length;
+const SIWS_NONCE_ALPHANUMERIC_REGEX = /^[a-zA-Z0-9]+$/;
+
+const isValidSiwsNonce = (nonce: string | undefined): nonce is string =>
+  typeof nonce === "string" &&
+  nonce.length >= 8 &&
+  nonce.length <= SIWS_NONCE_MAX_LENGTH &&
+  SIWS_NONCE_ALPHANUMERIC_REGEX.test(nonce);
+
 export const siws = (options: SIWSPluginOptions) =>
   ({
     id: "sign-in-with-stacks",
@@ -26,27 +41,24 @@ export const siws = (options: SIWSPluginOptions) =>
         "/siws/nonce",
         {
           method: "POST",
-          body: z.object({
-            // TODO Stacks address regex
-            walletAddress: z.string(),
-            chainId: z
-              .number()
-              .int()
-              .positive()
-              .max(4294967295)
-              .optional()
-              .default(0x00000001), // Default to Stacks mainnet
-          }),
+          body: z.object({}).strict().optional(),
         },
         async (ctx) => {
-          const { walletAddress, chainId } = ctx.body;
           const nonce = options.getNonce
             ? await options.getNonce()
             : generateSiwsNonce();
 
+          if (!isValidSiwsNonce(nonce)) {
+            throw new APIError("INTERNAL_SERVER_ERROR", {
+              message: `SIWS getNonce must return a nonce of 8-${SIWS_NONCE_MAX_LENGTH} alphanumeric characters.`,
+              status: 500,
+              code: "SIWS_INVALID_NONCE",
+            });
+          }
+
           // Store nonce with 15-minute expiration
           await ctx.context.internalAdapter.createVerificationValue({
-            identifier: `siws:${walletAddress.toLowerCase()}:${chainId}`,
+            identifier: `${SIWS_VERIFICATION_IDENTIFIER_PREFIX}${nonce}`,
             value: nonce,
             expiresAt: new Date(Date.now() + 15 * 60 * 1000),
           });
@@ -94,12 +106,23 @@ export const siws = (options: SIWSPluginOptions) =>
           }
 
           try {
-            // Atomically consume the single-use nonce before any signature
-            // work. The first concurrent request wins; every racer gets null.
+            // The nonce is keyed by its signed value: parse the message to
+            // find it, then consume it atomically before any signature work.
+            // The first concurrent request wins; every racer gets null.
             // Expired nonces are treated as already consumed.
+            const { nonce } = parseSiwsMessage(message);
+
+            if (!isValidSiwsNonce(nonce)) {
+              throw new APIError("UNAUTHORIZED", {
+                message: "Unauthorized: Invalid or expired nonce",
+                status: 401,
+                code: "UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE",
+              });
+            }
+
             const verification =
               await ctx.context.internalAdapter.consumeVerificationValue(
-                `siws:${walletAddress.toLowerCase()}:${chainId}`,
+                `${SIWS_VERIFICATION_IDENTIFIER_PREFIX}${nonce}`,
               );
 
             if (!verification) {
@@ -111,7 +134,6 @@ export const siws = (options: SIWSPluginOptions) =>
             }
 
             // Verify SIWS message
-            const { value: nonce } = verification;
             const valid = verifySiwsMessage({
               message,
               signature,
