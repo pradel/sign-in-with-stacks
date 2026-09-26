@@ -11,8 +11,7 @@ export type CreateSiwsMessageParameters = SiwsMessage;
 export type CreateSiwsMessageReturnType = string;
 
 export type CreateSiwsMessageErrorType =
-  | InvalidAddressErrorType
-  | SiwsInvalidMessageFieldErrorType;
+  InvalidAddressErrorType | SiwsInvalidMessageFieldErrorType;
 
 /**
  * @description Creates SIP-X formatted message.
@@ -60,13 +59,11 @@ export function createSiwsMessage(
           `Provided value: ${chainId}`,
         ],
       });
-    if (
-      !(
-        domainRegex.test(domain) ||
-        ipRegex.test(domain) ||
-        localhostRegex.test(domain)
-      )
-    )
+    if (!(
+      domainRegex.test(domain) ||
+      ipRegex.test(domain) ||
+      localhostRegex.test(domain)
+    ))
       throw new SiwsInvalidMessageFieldError({
         field: "domain",
         metaMessages: [
