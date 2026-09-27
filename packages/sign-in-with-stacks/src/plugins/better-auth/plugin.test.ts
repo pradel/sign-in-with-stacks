@@ -12,7 +12,7 @@ import { createSiwsMessage } from "../../createSiwsMessage.js";
 import { siws } from "./plugin.js";
 import type { SIWSVerifyMessageArgs } from "./types.js";
 
-const account = accounts[0];
+const [account, otherAccount] = accounts;
 
 async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
   const database = new DatabaseSync(":memory:");
@@ -427,7 +427,9 @@ describe("verify endpoint", () => {
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
-    expect(user?.email).toContain(account.address.toLowerCase());
+    expect(user?.email).toBe(
+      `${account.address.toLowerCase()}@siws.placeholder.invalid`,
+    );
   });
 
   test("uses custom emailDomainName", async () => {
@@ -461,6 +463,112 @@ describe("verify endpoint", () => {
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
     expect(user?.email).toBe(`${account.address.toLowerCase()}@myapp.com`);
+  });
+
+  test("does not bind an email that already belongs to another account", async () => {
+    const { auth, db } = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+    });
+    const ctx = await auth.$context;
+    await ctx.internalAdapter.createUser(
+      { name: "Existing", email: "taken@example.com" },
+      { method: "email-password" },
+    );
+
+    const nonce = await getNonceFromApi(auth);
+
+    const message = createSiwsMessage({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await verifyWithApi(auth, {
+      walletAddress: account.address,
+      message,
+      signature,
+      chainId: STACKS_TESTNET.chainId,
+      email: "taken@example.com",
+    });
+
+    const user = await db.findOne<{ email: string }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: res.user.id }],
+    });
+    expect(user?.email).toBe(
+      `${account.address.toLowerCase()}@siws.placeholder.invalid`,
+    );
+
+    const usersWithEmail = await db.findMany({
+      model: "user",
+      where: [{ field: "email", operator: "eq", value: "taken@example.com" }],
+    });
+    expect(usersWithEmail).toHaveLength(1);
+  });
+
+  test("treats a case-variant of an existing email as the same email", async () => {
+    const { auth, db } = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+    });
+
+    // First wallet claims a mixed-case email; it is stored normalized.
+    const firstNonce = await getNonceFromApi(auth);
+    const firstMessage = createSiwsMessage({
+      address: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce: firstNonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+    const firstSignature = signMessage(firstMessage, account.privateKey);
+    const first = await verifyWithApi(auth, {
+      walletAddress: account.address,
+      message: firstMessage,
+      signature: firstSignature,
+      chainId: STACKS_TESTNET.chainId,
+      email: "Mixed@Case.com",
+    });
+
+    const firstUser = await db.findOne<{ email: string }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: first.user.id }],
+    });
+    expect(firstUser?.email).toBe("mixed@case.com");
+
+    // A different wallet presenting the lowercase variant must not claim it.
+    const secondNonce = await getNonceFromApi(auth);
+    const secondMessage = createSiwsMessage({
+      address: otherAccount.address,
+      chainId: STACKS_TESTNET.chainId,
+      domain: "localhost:3000",
+      nonce: secondNonce,
+      uri: "http://localhost:3000",
+      version: "1",
+    });
+    const secondSignature = signMessage(secondMessage, otherAccount.privateKey);
+    const second = await verifyWithApi(auth, {
+      walletAddress: otherAccount.address,
+      message: secondMessage,
+      signature: secondSignature,
+      chainId: STACKS_TESTNET.chainId,
+      email: "mixed@case.com",
+    });
+
+    const secondUser = await db.findOne<{ email: string }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: second.user.id }],
+    });
+    expect(secondUser?.email).toBe(
+      `${otherAccount.address.toLowerCase()}@siws.placeholder.invalid`,
+    );
   });
 });
 
