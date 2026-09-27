@@ -82,6 +82,34 @@ test("behavior: invalid address not matching signature", async () => {
   ).toBeFalsy();
 });
 
+test("behavior: confusable address spelling verifies against the signer", async () => {
+  const canonicalMessage = createSiwsMessage({
+    address: account.address,
+    chainId: STACKS_TESTNET.chainId,
+    domain: "example.com",
+    nonce: "foobarbaz",
+    uri: "https://example.com/path",
+    version: "1",
+  });
+  const message = canonicalMessage.replace(
+    account.address,
+    account.address.replace(/0/g, "O"),
+  );
+
+  const hash = hashMessage(message);
+  const signature = signMessageHashRsv({
+    messageHash: bytesToHex(hash),
+    privateKey: account.privateKey,
+  });
+
+  expect(
+    verifySiwsMessage({
+      message,
+      signature,
+    }),
+  ).toBeTruthy();
+});
+
 test("behavior: unparseable expirationTime does not bypass expiration", async () => {
   const message = createSiwsMessage({
     address: account.address,

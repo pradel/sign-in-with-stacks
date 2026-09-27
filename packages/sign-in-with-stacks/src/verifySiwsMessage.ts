@@ -8,6 +8,7 @@ import {
 } from "@stacks/transactions";
 import { parseSiwsMessage } from "./parseSiwsMessage.js";
 import type { Prettify } from "./types.js";
+import { isAddressEqual } from "./utils.js";
 import {
   type ValidateSiwsMessageParameters,
   validateSiwsMessage,
@@ -82,5 +83,5 @@ export function verifySiwsMessage(
   });
 
   // Verify the address matches the signature address
-  return isValidSignature && stacksAddress === parsed.address;
+  return isValidSignature && isAddressEqual(stacksAddress, parsed.address);
 }

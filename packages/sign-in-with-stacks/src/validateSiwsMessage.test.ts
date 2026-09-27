@@ -48,6 +48,18 @@ test("behavior: invalid address", () => {
   ).toBeFalsy();
 });
 
+test("behavior: equivalent address spelling matches expected address", () => {
+  expect(
+    validateSiwsMessage({
+      address: message.address,
+      message: {
+        ...message,
+        address: message.address.replace(/0/g, "O"),
+      },
+    }),
+  ).toBeTruthy();
+});
+
 test("behavior: domain mismatch", () => {
   expect(
     validateSiwsMessage({
