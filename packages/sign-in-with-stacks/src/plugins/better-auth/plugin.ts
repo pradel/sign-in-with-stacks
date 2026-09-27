@@ -1,3 +1,4 @@
+import { createPlaceholderEmail } from "@better-auth/core/utils/email";
 import type { BetterAuthPlugin, InferOptionSchema, User } from "better-auth";
 import { APIError, createAuthEndpoint, isAPIError } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
@@ -237,22 +238,78 @@ export const siws = (options: SIWSPluginOptions) => {
 
             // Create new user if none exists
             if (!user) {
-              const domain =
-                options.emailDomainName ?? getOrigin(ctx.context.baseURL);
-              // Use checksummed address for email generation
-              const userEmail =
-                !isAnon && email ? email : `${walletAddress}@${domain}`;
+              const normalizedEmail = email?.toLowerCase();
+              const walletEmail = options.emailDomainName
+                ? `${walletAddress}@${options.emailDomainName}`
+                : createPlaceholderEmail({
+                    identifier: walletAddress,
+                    namespace: "siws",
+                  });
+              // SIWS proves wallet control, not email ownership: bind the caller
+              // email only when unclaimed and atomically reserved, else keep
+              // the wallet-derived address. Silent fallback avoids an
+              // enumeration oracle.
+              let userEmail = walletEmail;
+              let emailClaimIdentifier: string | undefined;
+              if (!isAnon && normalizedEmail) {
+                const identifier = `siws-email-claim-${normalizedEmail}`;
+                let reserved = false;
+                try {
+                  reserved =
+                    await ctx.context.internalAdapter.reserveVerificationValue({
+                      identifier,
+                      value: walletAddress,
+                      expiresAt: new Date(Date.now() + 60_000),
+                    });
+                } catch {
+                  reserved = false;
+                }
+                if (reserved) {
+                  emailClaimIdentifier = identifier;
+                  const existingUser =
+                    await ctx.context.internalAdapter.findUserByEmail(
+                      normalizedEmail,
+                    );
+                  if (!existingUser) {
+                    userEmail = normalizedEmail;
+                  }
+                }
+              }
               const { name, avatar } =
                 (await options.resolveProfile?.({ walletAddress })) ?? {};
 
-              user = await ctx.context.internalAdapter.createUser(
-                {
-                  name: name ?? walletAddress,
-                  email: userEmail,
-                  image: avatar ?? "",
-                },
-                { method: "siws" },
-              );
+              const createSIWSUser = (newUserEmail: string) =>
+                ctx.context.internalAdapter.createUser(
+                  {
+                    name: name ?? walletAddress,
+                    email: newUserEmail,
+                    image: avatar ?? "",
+                  },
+                  { method: "siws" },
+                );
+
+              try {
+                user = await createSIWSUser(userEmail);
+              } catch (error) {
+                if (userEmail !== normalizedEmail || !normalizedEmail) {
+                  throw error;
+                }
+                const claimedUser =
+                  await ctx.context.internalAdapter.findUserByEmail(
+                    normalizedEmail,
+                  );
+                if (!claimedUser) {
+                  throw error;
+                }
+                userEmail = walletEmail;
+                user = await createSIWSUser(userEmail);
+              } finally {
+                if (emailClaimIdentifier) {
+                  await ctx.context.internalAdapter
+                    .consumeVerificationValue(emailClaimIdentifier)
+                    .catch(() => {});
+                }
+              }
 
               // Create wallet address record
               await ctx.context.adapter.create<WalletAddress>({
@@ -336,14 +393,3 @@ export const siws = (options: SIWSPluginOptions) => {
     options,
   } satisfies BetterAuthPlugin;
 };
-
-function getOrigin(url: string) {
-  try {
-    const parsedUrl = new URL(url);
-    // For custom URL schemes (like exp://), the origin property returns the string "null"
-    // instead of null. We need to handle this case and return null so the fallback logic works.
-    return parsedUrl.origin === "null" ? null : parsedUrl.origin;
-  } catch (error) {
-    return null;
-  }
-}
