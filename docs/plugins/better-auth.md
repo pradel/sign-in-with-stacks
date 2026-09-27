@@ -169,7 +169,7 @@ console.log("Signed in successfully:", data.user);
 
 ### Anonymous Mode
 
-When `anonymous` is `true` (default), users can sign in without providing an email. The plugin will generate a placeholder email using the wallet address:
+When `anonymous` is `true` (default), users can sign in without providing an email. The plugin generates a placeholder email at `siws.placeholder.invalid` using the wallet address:
 
 ```
 sp2x0tz59d5sz8acq6ymchhnr2zn51z32e2cj173@siws.placeholder.invalid

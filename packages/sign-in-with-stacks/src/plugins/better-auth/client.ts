@@ -1,6 +1,6 @@
 import type { BetterAuthClientPlugin } from "better-auth";
-import type { siws } from "./plugin.js";
 import { PACKAGE_VERSION } from "../../version.js";
+import type { siws } from "./plugin.js";
 
 export const siwsClient = () => {
   return {
