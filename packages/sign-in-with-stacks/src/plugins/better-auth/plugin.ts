@@ -6,6 +6,7 @@ import { mergeSchema } from "better-auth/db";
 import * as z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { parseSiwsMessage } from "../../parseSiwsMessage.js";
+import { isAddress } from "../../utils.js";
 import { PACKAGE_VERSION } from "../../version.js";
 import { schema, type WalletAddressSchema } from "./schema.js";
 import type {
@@ -26,7 +27,7 @@ declare module "@better-auth/core" {
 export interface SIWSPluginOptions {
   // The domain name of your application (required for SIWS message generation)
   domain: string;
-  // The email domain name for creating user accounts when not using anonymous mode. Defaults to the domain from your base URL
+  // The email domain name for creating user accounts when not using anonymous mode. Defaults to a placeholder domain
   emailDomainName?: string | undefined;
   // Whether to allow anonymous sign-ins without requiring an email. Default is true
   anonymous?: boolean | undefined;
@@ -49,12 +50,21 @@ const SIWS_NONCE_MAX_LENGTH =
   VERIFICATION_IDENTIFIER_MAX_LENGTH -
   SIWS_VERIFICATION_IDENTIFIER_PREFIX.length;
 const SIWS_NONCE_ALPHANUMERIC_REGEX = /^[a-zA-Z0-9]+$/;
+const SIWS_MAX_CHAIN_ID = 4294967295;
 
 const isValidSiwsNonce = (nonce: string | undefined): nonce is string =>
   typeof nonce === "string" &&
   nonce.length >= 8 &&
   nonce.length <= SIWS_NONCE_MAX_LENGTH &&
   SIWS_NONCE_ALPHANUMERIC_REGEX.test(nonce);
+
+const siwsMessageMismatchError = () =>
+  new APIError("UNAUTHORIZED", {
+    message:
+      "Unauthorized: SIWS message does not match the expected domain, address, chain ID, or nonce",
+    status: 401,
+    code: "UNAUTHORIZED_SIWS_MESSAGE_MISMATCH",
+  });
 
 export const siws = (options: SIWSPluginOptions) => {
   const verifyMessage =
@@ -111,19 +121,11 @@ export const siws = (options: SIWSPluginOptions) => {
           method: "POST",
           body: z
             .object({
-              // TODO Stacks address regex
-              walletAddress: z.string().min(1),
               message: z.string().min(1),
               signature: z.string().min(1),
-              chainId: z
-                .number()
-                .int()
-                .positive()
-                .max(4294967295)
-                .optional()
-                .default(0x00000001), // Default to Stacks mainnet
               email: z.email().optional(),
             })
+            .strict()
             .refine((data) => options.anonymous !== false || !!data.email, {
               message:
                 "Email is required when the anonymous plugin option is disabled.",
@@ -132,8 +134,7 @@ export const siws = (options: SIWSPluginOptions) => {
           requireRequest: true,
         },
         async (ctx) => {
-          const { walletAddress, message, signature, chainId, email } =
-            ctx.body;
+          const { message, signature, email } = ctx.body;
           const isAnon = options.anonymous ?? true;
 
           if (!isAnon && !email) {
@@ -144,20 +145,54 @@ export const siws = (options: SIWSPluginOptions) => {
           }
 
           try {
-            // The nonce is keyed by its signed value: parse the message to
-            // find it, then consume it atomically before any signature work.
-            // The first concurrent request wins; every racer gets null.
-            // Expired nonces are treated as already consumed.
-            const { nonce } = parseSiwsMessage(message);
+            // The signed message is the source of truth for wallet identity:
+            // address, chain ID, nonce, and time bounds are read from it rather
+            // than from the request body.
+            const parsedMessage = parseSiwsMessage(message);
+            const { address: walletAddress, chainId, nonce } = parsedMessage;
 
-            if (!isValidSiwsNonce(nonce)) {
-              throw new APIError("UNAUTHORIZED", {
-                message: "Unauthorized: Invalid or expired nonce",
-                status: 401,
-                code: "UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE",
-              });
+            if (
+              !walletAddress ||
+              !isAddress(walletAddress) ||
+              !isValidSiwsNonce(nonce) ||
+              typeof chainId !== "number" ||
+              !Number.isInteger(chainId) ||
+              chainId < 1 ||
+              chainId > SIWS_MAX_CHAIN_ID ||
+              parsedMessage.domain !== options.domain
+            ) {
+              throw siwsMessageMismatchError();
             }
 
+            const now = new Date();
+            if (parsedMessage.expirationTime) {
+              if (
+                Number.isNaN(parsedMessage.expirationTime.getTime()) ||
+                now >= parsedMessage.expirationTime
+              ) {
+                throw new APIError("UNAUTHORIZED", {
+                  message: "Unauthorized: SIWS message has expired",
+                  status: 401,
+                  code: "UNAUTHORIZED_SIWS_MESSAGE_EXPIRED",
+                });
+              }
+            }
+            if (parsedMessage.notBefore) {
+              if (
+                Number.isNaN(parsedMessage.notBefore.getTime()) ||
+                now < parsedMessage.notBefore
+              ) {
+                throw new APIError("UNAUTHORIZED", {
+                  message: "Unauthorized: SIWS message is not yet valid",
+                  status: 401,
+                  code: "UNAUTHORIZED_SIWS_MESSAGE_NOT_YET_VALID",
+                });
+              }
+            }
+
+            // Atomically consume the single-use nonce before any signature
+            // work. The first concurrent request wins; every racer gets null.
+            // Expired nonces are treated as already consumed.
             const verification =
               await ctx.context.internalAdapter.consumeVerificationValue(
                 `${SIWS_VERIFICATION_IDENTIFIER_PREFIX}${nonce}`,
@@ -171,7 +206,7 @@ export const siws = (options: SIWSPluginOptions) => {
               });
             }
 
-            // Verify SIWS message
+            // Verify SIWS message with enhanced parameters
             const verified = await verifyMessage({
               message,
               signature,

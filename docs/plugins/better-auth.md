@@ -142,8 +142,6 @@ Send the message and signature to the server for verification:
 const { data, error } = await authClient.siws.verify({
   message: message,
   signature: signature,
-  walletAddress: "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
-  chainId: 1, // optional, defaults to Stacks mainnet (1)
   email: "user@example.com", // optional, required if anonymous is false
 });
 
@@ -159,15 +157,15 @@ console.log("Signed in successfully:", data.user);
 
 ### Server Plugin Options
 
-| Option            | Type                                               | Required | Default  | Description                                              |
-| ----------------- | -------------------------------------------------- | -------- | -------- | -------------------------------------------------------- |
-| `domain`          | `string`                                           | Yes      | -        | Your application's domain (e.g., `example.com`)          |
-| `emailDomainName` | `string`                                           | No       | Base URL | Domain used for generating user emails in anonymous mode |
-| `anonymous`       | `boolean`                                          | No       | `true`   | Allow sign-in without requiring an email                 |
-| `getNonce`        | `() => Promise<string>`                            | No       | Built-in | Custom function to generate nonces                       |
-| `verifyMessage`   | `(args) => Promise<boolean>`                       | No       | Built-in | Custom signature verification for the signed message     |
-| `resolveProfile`  | `({ walletAddress }) => Promise<{ name, avatar }>` | No       | -        | Resolve a display name and avatar for new wallet users   |
-| `schema`          | `InferOptionSchema`                                | No       | -        | Customize the `walletAddress` model name and columns     |
+| Option            | Type                                               | Required | Default            | Description                                                     |
+| ----------------- | -------------------------------------------------- | -------- | ------------------ | --------------------------------------------------------------- |
+| `domain`          | `string`                                           | Yes      | -                  | Your application's domain (e.g., `example.com`)                 |
+| `emailDomainName` | `string`                                           | No       | Placeholder domain | Domain used for generating user emails in anonymous mode        |
+| `anonymous`       | `boolean`                                          | No       | `true`             | Allow sign-in without requiring an email                        |
+| `getNonce`        | `() => Promise<string>`                            | No       | Built-in           | Custom function to generate nonces (8+ alphanumeric characters) |
+| `verifyMessage`   | `(args) => Promise<boolean>`                       | No       | Built-in           | Custom signature verification for the signed message            |
+| `resolveProfile`  | `({ walletAddress }) => Promise<{ name, avatar }>` | No       | -                  | Resolve a display name and avatar for new wallet users          |
+| `schema`          | `InferOptionSchema`                                | No       | -                  | Customize the `walletAddress` model name and columns            |
 
 ### Anonymous Mode
 
@@ -270,7 +268,7 @@ siws({
 
 #### `POST /api/auth/siws/nonce`
 
-Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or chain.
+Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or chain; identity is taken from the signed message at verification time.
 
 **Request Body:**
 
@@ -288,16 +286,14 @@ Generates a nonce for the SIWS flow. The nonce is unbound from any wallet or cha
 
 #### `POST /api/auth/siws/verify`
 
-Verifies a signed SIWS message and creates a session.
+Verifies a signed SIWS message and creates a session. The wallet address, chain ID, nonce, and time bounds are read from the signed message.
 
 **Request Body:**
 
 ```json
 {
-  "walletAddress": "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
   "message": "example.com wants you to sign in with your Stacks account...",
   "signature": "0x...",
-  "chainId": 1,
   "email": "user@example.com"
 }
 ```
@@ -326,13 +322,11 @@ Request a nonce for signing. Takes no parameters.
 
 Verify a signature and create a session.
 
-| Parameter       | Type     | Required | Description                                   |
-| --------------- | -------- | -------- | --------------------------------------------- |
-| `walletAddress` | `string` | Yes      | The user's Stacks address                     |
-| `message`       | `string` | Yes      | The SIWS message that was signed              |
-| `signature`     | `string` | Yes      | The signature from the wallet                 |
-| `chainId`       | `number` | No       | Chain ID (defaults to mainnet)                |
-| `email`         | `string` | No       | User's email (required if anonymous is false) |
+| Parameter   | Type     | Required | Description                                   |
+| ----------- | -------- | -------- | --------------------------------------------- |
+| `message`   | `string` | Yes      | The SIWS message that was signed              |
+| `signature` | `string` | Yes      | The signature from the wallet                 |
+| `email`     | `string` | No       | User's email (required if anonymous is false) |
 
 ## Error Handling
 
@@ -347,6 +341,13 @@ if (error) {
   switch (error.code) {
     case "UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE":
       // Nonce expired, request a new one
+      break;
+    case "UNAUTHORIZED_SIWS_MESSAGE_MISMATCH":
+      // Message does not match the expected domain, address, or chain ID
+      break;
+    case "UNAUTHORIZED_SIWS_MESSAGE_EXPIRED":
+    case "UNAUTHORIZED_SIWS_MESSAGE_NOT_YET_VALID":
+      // Message is outside its signed time bounds
       break;
     case "UNAUTHORIZED":
       // Invalid signature

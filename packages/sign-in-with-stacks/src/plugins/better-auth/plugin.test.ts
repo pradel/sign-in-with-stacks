@@ -4,7 +4,6 @@ import { hashMessage } from "@stacks/encryption";
 import { STACKS_TESTNET } from "@stacks/network";
 import { signMessageHashRsv } from "@stacks/transactions";
 import { betterAuth } from "better-auth";
-import { getAdapter } from "better-auth/db/adapter";
 import { getMigrations } from "better-auth/db/migration";
 import { describe, expect, test } from "vitest";
 import { accounts } from "../../../test/constants.js";
@@ -13,6 +12,8 @@ import { siws } from "./plugin.js";
 import type { SIWSVerifyMessageArgs } from "./types.js";
 
 const [account, otherAccount] = accounts;
+
+type TestAuth = Awaited<ReturnType<typeof createTestInstance>>;
 
 async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
   const database = new DatabaseSync(":memory:");
@@ -38,14 +39,10 @@ async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
   });
   await runMigrations();
 
-  const db = await getAdapter(auth.options);
-
-  return { auth, db };
+  return auth;
 }
 
-async function getNonceFromApi(
-  auth: Awaited<ReturnType<typeof createTestInstance>>["auth"],
-) {
+async function getNonceFromApi(auth: TestAuth) {
   const res = await auth.api.nonce();
   return res.nonce as string;
 }
@@ -58,23 +55,87 @@ function signMessage(message: string, privateKey: string) {
   });
 }
 
+function createMessage(options: {
+  nonce: string;
+  address?: string;
+  chainId?: number;
+  domain?: string;
+  expirationTime?: Date;
+  notBefore?: Date;
+}) {
+  return createSiwsMessage({
+    address: options.address ?? account.address,
+    chainId: options.chainId ?? STACKS_TESTNET.chainId,
+    domain: options.domain ?? "localhost:3000",
+    nonce: options.nonce,
+    uri: "http://localhost:3000",
+    version: "1",
+    ...(options.expirationTime
+      ? { expirationTime: options.expirationTime }
+      : {}),
+    ...(options.notBefore ? { notBefore: options.notBefore } : {}),
+  });
+}
+
+async function postJson(
+  auth: TestAuth,
+  path: string,
+  body: Record<string, unknown>,
+) {
+  return auth.handler(
+    new Request(`http://localhost:3000/api/auth${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 async function verifyWithApi(
-  auth: Awaited<ReturnType<typeof createTestInstance>>["auth"],
-  body: {
-    walletAddress: string;
-    message: string;
-    signature: string;
+  auth: TestAuth,
+  body: { message: string; signature: string; email?: string },
+) {
+  const res = await postJson(auth, "/siws/verify", body);
+  const json = await res.json();
+  if (!res.ok) {
+    throw Object.assign(new Error(json.message ?? "Verification failed"), {
+      status: res.status,
+      code: json.code,
+      body: json,
+    });
+  }
+  return json as {
+    token: string;
+    success: boolean;
+    user: { id: string; walletAddress: string; chainId: number };
+  };
+}
+
+async function signIn(
+  auth: TestAuth,
+  options?: {
+    address?: string;
+    privateKey?: string;
     chainId?: number;
+    domain?: string;
     email?: string;
   },
 ) {
-  return auth.api.verify({
-    body,
-    request: new Request("http://localhost:3000/api/auth/siws/verify", {
-      method: "POST",
-    }),
-    headers: new Headers(),
-    asResponse: false,
+  const nonce = await getNonceFromApi(auth);
+  const message = createMessage({
+    nonce,
+    ...(options?.address !== undefined ? { address: options.address } : {}),
+    ...(options?.chainId !== undefined ? { chainId: options.chainId } : {}),
+    ...(options?.domain !== undefined ? { domain: options.domain } : {}),
+  });
+  const signature = signMessage(
+    message,
+    options?.privateKey ?? account.privateKey,
+  );
+  return verifyWithApi(auth, {
+    message,
+    signature,
+    ...(options?.email !== undefined ? { email: options.email } : {}),
   });
 }
 
@@ -84,16 +145,11 @@ describe("siws plugin", () => {
     expect(plugin.id).toBe("siws");
   });
 
-  test("plugin exposes its options", () => {
-    const options = { domain: "example.com" };
-    const plugin = siws(options);
-    expect(plugin.options).toBe(options);
-  });
-
   test("plugin has schema", () => {
     const plugin = siws({ domain: "example.com" });
     expect(plugin.schema).toBeDefined();
     expect(plugin.schema.walletAddress).toBeDefined();
+    expect(plugin.schema.walletAddress.fields.userId.index).toBe(true);
   });
 
   test("plugin has nonce and verify endpoints", () => {
@@ -105,14 +161,14 @@ describe("siws plugin", () => {
 
 describe("nonce endpoint", () => {
   test("returns a nonce without wallet inputs", async () => {
-    const { auth } = await createTestInstance();
+    const auth = await createTestInstance();
     const nonce = await getNonceFromApi(auth);
     expect(nonce).toMatch(/^[a-zA-Z0-9]{8,}$/);
   });
 
   test("uses custom getNonce when provided", async () => {
     const customNonce = "customnoncevalue";
-    const { auth } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       getNonce: async () => customNonce,
     });
@@ -121,19 +177,16 @@ describe("nonce endpoint", () => {
   });
 
   test("rejects obsolete wallet-bound inputs", async () => {
-    const { auth } = await createTestInstance();
-    const res = await auth.handler(
-      new Request("http://localhost:3000/api/auth/siws/nonce", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ walletAddress: account.address, chainId: 1 }),
-      }),
-    );
+    const auth = await createTestInstance();
+    const res = await postJson(auth, "/siws/nonce", {
+      walletAddress: account.address,
+      chainId: 1,
+    });
     expect(res.status).toBe(400);
   });
 
   test("rejects a nonce that does not follow the expected format", async () => {
-    const { auth } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       getNonce: async () => "not-a-valid-nonce!",
     });
@@ -143,26 +196,8 @@ describe("nonce endpoint", () => {
 
 describe("verify endpoint", () => {
   test("successfully authenticates a new user", async () => {
-    const { auth } = await createTestInstance();
-    const nonce = await getNonceFromApi(auth);
-
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-    });
+    const auth = await createTestInstance();
+    const res = await signIn(auth);
 
     expect(res.success).toBe(true);
     expect(res.token).toBeTypeOf("string");
@@ -171,265 +206,258 @@ describe("verify endpoint", () => {
   });
 
   test("returns the same user on second sign-in", async () => {
-    const { auth } = await createTestInstance();
+    const auth = await createTestInstance();
+    const first = await signIn(auth);
+    const second = await signIn(auth);
 
-    // First sign-in
-    const nonce1 = await getNonceFromApi(auth);
-    const message1 = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce: nonce1,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-    const signature1 = signMessage(message1, account.privateKey);
-    const res1 = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message: message1,
-      signature: signature1,
-      chainId: STACKS_TESTNET.chainId,
-    });
+    expect(first.user.id).toBe(second.user.id);
+  });
 
-    // Second sign-in
-    const nonce2 = await getNonceFromApi(auth);
-    const message2 = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce: nonce2,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-    const signature2 = signMessage(message2, account.privateKey);
-    const res2 = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message: message2,
-      signature: signature2,
-      chainId: STACKS_TESTNET.chainId,
-    });
+  test("uses the chain id from the signed message", async () => {
+    const auth = await createTestInstance();
+    const chainId = 2;
+    const res = await signIn(auth, { chainId });
 
-    expect(res1.user.id).toBe(res2.user.id);
+    expect(res.user.chainId).toBe(chainId);
+
+    const ctx = await auth.$context;
+    const wallet = await ctx.adapter.findOne<{ chainId: number }>({
+      model: "walletAddress",
+      where: [
+        { field: "address", operator: "eq", value: account.address },
+        { field: "chainId", operator: "eq", value: chainId },
+      ],
+    });
+    expect(wallet?.chainId).toBe(chainId);
+  });
+
+  test("links same address across different chains to same user", async () => {
+    const auth = await createTestInstance();
+    const first = await signIn(auth);
+    const second = await signIn(auth, { chainId: 2 });
+
+    expect(first.user.id).toBe(second.user.id);
   });
 
   test("rejects invalid signature", async () => {
-    const { auth } = await createTestInstance();
+    const auth = await createTestInstance();
     const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce });
+    const signature = signMessage("wrong message", account.privateKey);
 
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    // Sign a different message to produce an invalid signature
-    const invalidSignature = signMessage("wrong message", account.privateKey);
-
-    await expect(
-      verifyWithApi(auth, {
-        walletAddress: account.address,
-        message,
-        signature: invalidSignature,
-        chainId: STACKS_TESTNET.chainId,
-      }),
-    ).rejects.toThrow();
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
   });
 
   test("supports a custom verifyMessage", async () => {
     const calls: SIWSVerifyMessageArgs[] = [];
-    const { auth } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       verifyMessage: async (args) => {
         calls.push(args);
         return true;
       },
     });
-    const nonce = await getNonceFromApi(auth);
 
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-    });
-
+    const res = await signIn(auth);
     expect(res.success).toBe(true);
+
     expect(calls).toHaveLength(1);
     const [call] = calls;
     expect(call?.address).toBe(account.address);
     expect(call?.chainId).toBe(STACKS_TESTNET.chainId);
-    expect(call?.message).toBe(message);
-    expect(call?.signature).toBe(signature);
+    expect(call?.message).toBeTypeOf("string");
+    expect(call?.signature).toBeTypeOf("string");
   });
 
   test("rejects a signature when a custom verifyMessage returns false", async () => {
-    const { auth } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       verifyMessage: async () => false,
     });
-    const nonce = await getNonceFromApi(auth);
 
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-
-    await expect(
-      verifyWithApi(auth, {
-        walletAddress: account.address,
-        message,
-        signature,
-        chainId: STACKS_TESTNET.chainId,
-      }),
-    ).rejects.toThrow();
+    const error = await signIn(auth).catch((e) => e);
+    expect(error.status).toBe(401);
   });
 
-  test("rejects invalid nonce", async () => {
-    const { auth } = await createTestInstance();
-
-    // Create a message with a nonce that was never stored
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce: "noncethatwasneverstored",
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
+  test("rejects a message with an unknown nonce", async () => {
+    const auth = await createTestInstance();
+    const message = createMessage({ nonce: "UnknownNonce12345678" });
     const signature = signMessage(message, account.privateKey);
 
-    await expect(
-      verifyWithApi(auth, {
-        walletAddress: account.address,
-        message,
-        signature,
-        chainId: STACKS_TESTNET.chainId,
-      }),
-    ).rejects.toThrow();
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE");
   });
 
   test("prevents nonce reuse", async () => {
-    const { auth } = await createTestInstance();
+    const auth = await createTestInstance();
     const nonce = await getNonceFromApi(auth);
-
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
+    const message = createMessage({ nonce });
     const signature = signMessage(message, account.privateKey);
 
-    // First verification should succeed
-    await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-    });
+    await verifyWithApi(auth, { message, signature });
 
-    // Second verification with same nonce should fail
-    await expect(
-      verifyWithApi(auth, {
-        walletAddress: account.address,
-        message,
-        signature,
-        chainId: STACKS_TESTNET.chainId,
-      }),
-    ).rejects.toThrow();
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE");
   });
 
-  test("links same address across different chains to same user", async () => {
-    const { auth } = await createTestInstance();
-
-    // Sign in on testnet
-    const nonce1 = await getNonceFromApi(auth);
-    const message1 = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce: nonce1,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-    const signature1 = signMessage(message1, account.privateKey);
-    const res1 = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message: message1,
-      signature: signature1,
-      chainId: STACKS_TESTNET.chainId,
-    });
-
-    // Sign in on a different chain with same address
-    const chainIdB = 2;
-    const nonce2 = await getNonceFromApi(auth);
-    const message2 = createSiwsMessage({
-      address: account.address,
-      chainId: chainIdB,
-      domain: "localhost:3000",
-      nonce: nonce2,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-    const signature2 = signMessage(message2, account.privateKey);
-    const res2 = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message: message2,
-      signature: signature2,
-      chainId: chainIdB,
-    });
-
-    // Same user should be linked across chains
-    expect(res1.user.id).toBe(res2.user.id);
-  });
-
-  test("generates email in anonymous mode", async () => {
-    const { auth, db } = await createTestInstance();
+  test("mints exactly one session when the same nonce is verified concurrently", async () => {
+    const auth = await createTestInstance();
     const nonce = await getNonceFromApi(auth);
-
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
+    const message = createMessage({ nonce });
     const signature = signMessage(message, account.privateKey);
 
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
+    const ctx = await auth.$context;
+    const sessionsBefore = await ctx.adapter.findMany({ model: "session" });
+
+    const results = await Promise.allSettled([
+      verifyWithApi(auth, { message, signature }),
+      verifyWithApi(auth, { message, signature }),
+    ]);
+
+    const successes = results.filter((result) => result.status === "fulfilled");
+    expect(successes).toHaveLength(1);
+
+    const sessionsAfter = await ctx.adapter.findMany({ model: "session" });
+    expect(sessionsAfter.length).toBe(sessionsBefore.length + 1);
+  });
+
+  test("rejects an expired nonce and consumes the row", async () => {
+    const auth = await createTestInstance();
+    const ctx = await auth.$context;
+    const nonce = "ExpiredNonce12345678";
+    const identifier = `siws:${nonce}`;
+
+    await ctx.internalAdapter.createVerificationValue({
+      identifier,
+      value: nonce,
+      expiresAt: new Date(Date.now() - 1000),
     });
 
-    // Check the user's email in the database
-    const user = await db.findOne<{ email: string }>({
+    const message = createMessage({ nonce });
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE");
+    expect(
+      await ctx.internalAdapter.findVerificationValue(identifier),
+    ).toBeNull();
+  });
+
+  test("rejects a message bound to a different domain", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce, domain: "other.example.com" });
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_MISMATCH");
+  });
+
+  test("rejects a message with an invalid chain id", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce }).replace(
+      `Chain ID: ${STACKS_TESTNET.chainId}`,
+      "Chain ID: 0",
+    );
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_MISMATCH");
+  });
+
+  test("rejects an arbitrary message even with a valid signature", async () => {
+    const auth = await createTestInstance();
+    const message = "gm, please sign this to continue";
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_MISMATCH");
+  });
+
+  test("rejects an expired message", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({
+      nonce,
+      expirationTime: new Date(Date.now() - 60_000),
+    });
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_EXPIRED");
+  });
+
+  test("rejects a message that is not yet valid", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({
+      nonce,
+      notBefore: new Date(Date.now() + 60_000),
+    });
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_NOT_YET_VALID");
+  });
+
+  test("does not mint a session when an unrelated signature is reused", async () => {
+    const auth = await createTestInstance();
+    await signIn(auth);
+
+    const ctx = await auth.$context;
+    const sessionsBefore = await ctx.adapter.findMany({ model: "session" });
+
+    const nonce = await getNonceFromApi(auth);
+    expect(nonce).toBeTypeOf("string");
+    const unrelated = "Approve the transfer of 1 STX";
+    const signature = signMessage(unrelated, account.privateKey);
+
+    const error = await verifyWithApi(auth, {
+      message: unrelated,
+      signature,
+    }).catch((e) => e);
+    expect(error.status).toBe(401);
+
+    const sessionsAfter = await ctx.adapter.findMany({ model: "session" });
+    expect(sessionsAfter.length).toBe(sessionsBefore.length);
+  });
+});
+
+describe("email handling", () => {
+  test("uses a placeholder email in anonymous mode", async () => {
+    const auth = await createTestInstance();
+    const res = await signIn(auth);
+
+    const ctx = await auth.$context;
+    const user = await ctx.adapter.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
@@ -439,40 +467,67 @@ describe("verify endpoint", () => {
   });
 
   test("uses custom emailDomainName", async () => {
-    const { auth, db } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       emailDomainName: "myapp.com",
     });
+    const res = await signIn(auth);
 
-    const nonce = await getNonceFromApi(auth);
-
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-    });
-
-    const user = await db.findOne<{ email: string }>({
+    const ctx = await auth.$context;
+    const user = await ctx.adapter.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
     expect(user?.email).toBe(`${account.address.toLowerCase()}@myapp.com`);
   });
 
+  test("requires an email when anonymous is disabled", async () => {
+    const auth = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+    });
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce });
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await postJson(auth, "/siws/verify", { message, signature });
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects an invalid email format when anonymous is disabled", async () => {
+    const auth = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+    });
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce });
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await postJson(auth, "/siws/verify", {
+      message,
+      signature,
+      email: "not-an-email",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("binds a caller-supplied email when unclaimed", async () => {
+    const auth = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+    });
+    const res = await signIn(auth, { email: "stacks@example.com" });
+
+    const ctx = await auth.$context;
+    const user = await ctx.adapter.findOne<{ email: string }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: res.user.id }],
+    });
+    expect(user?.email).toBe("stacks@example.com");
+  });
+
   test("does not bind an email that already belongs to another account", async () => {
-    const { auth, db } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       anonymous: false,
     });
@@ -482,28 +537,9 @@ describe("verify endpoint", () => {
       { method: "email-password" },
     );
 
-    const nonce = await getNonceFromApi(auth);
+    const res = await signIn(auth, { email: "taken@example.com" });
 
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-      email: "taken@example.com",
-    });
-
-    const user = await db.findOne<{ email: string }>({
+    const user = await ctx.adapter.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
@@ -511,7 +547,7 @@ describe("verify endpoint", () => {
       `${account.address.toLowerCase()}@siws.placeholder.invalid`,
     );
 
-    const usersWithEmail = await db.findMany({
+    const usersWithEmail = await ctx.adapter.findMany({
       model: "user",
       where: [{ field: "email", operator: "eq", value: "taken@example.com" }],
     });
@@ -519,56 +555,26 @@ describe("verify endpoint", () => {
   });
 
   test("treats a case-variant of an existing email as the same email", async () => {
-    const { auth, db } = await createTestInstance({
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       anonymous: false,
     });
+    const first = await signIn(auth, { email: "Mixed@Case.com" });
 
-    // First wallet claims a mixed-case email; it is stored normalized.
-    const firstNonce = await getNonceFromApi(auth);
-    const firstMessage = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce: firstNonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-    const firstSignature = signMessage(firstMessage, account.privateKey);
-    const first = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message: firstMessage,
-      signature: firstSignature,
-      chainId: STACKS_TESTNET.chainId,
-      email: "Mixed@Case.com",
-    });
-
-    const firstUser = await db.findOne<{ email: string }>({
+    const ctx = await auth.$context;
+    const firstUser = await ctx.adapter.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: first.user.id }],
     });
     expect(firstUser?.email).toBe("mixed@case.com");
 
-    // A different wallet presenting the lowercase variant must not claim it.
-    const secondNonce = await getNonceFromApi(auth);
-    const secondMessage = createSiwsMessage({
+    const second = await signIn(auth, {
       address: otherAccount.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce: secondNonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-    const secondSignature = signMessage(secondMessage, otherAccount.privateKey);
-    const second = await verifyWithApi(auth, {
-      walletAddress: otherAccount.address,
-      message: secondMessage,
-      signature: secondSignature,
-      chainId: STACKS_TESTNET.chainId,
+      privateKey: otherAccount.privateKey,
       email: "mixed@case.com",
     });
 
-    const secondUser = await db.findOne<{ email: string }>({
+    const secondUser = await ctx.adapter.findOne<{ email: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: second.user.id }],
     });
@@ -578,47 +584,34 @@ describe("verify endpoint", () => {
   });
 });
 
-describe("resolveProfile", () => {
-  test("sets the user name and image", async () => {
-    const { auth, db } = await createTestInstance({
+describe("plugin options", () => {
+  test("exposes the plugin options", () => {
+    const options = { domain: "example.com" };
+    const plugin = siws(options);
+    expect(plugin.options).toBe(options);
+  });
+
+  test("uses resolveProfile for the user name and image", async () => {
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       resolveProfile: async ({ walletAddress }) => ({
         name: `bns:${walletAddress}`,
         avatar: "https://example.com/avatar.png",
       }),
     });
-    const nonce = await getNonceFromApi(auth);
+    const res = await signIn(auth);
 
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-    });
-
-    const user = await db.findOne<{ name: string; image: string }>({
+    const ctx = await auth.$context;
+    const user = await ctx.adapter.findOne<{ name: string; image: string }>({
       model: "user",
       where: [{ field: "id", operator: "eq", value: res.user.id }],
     });
     expect(user?.name).toBe(`bns:${account.address}`);
     expect(user?.image).toBe("https://example.com/avatar.png");
   });
-});
 
-describe("custom schema", () => {
-  test("merges a custom walletAddress schema", async () => {
-    const { auth } = await createTestInstance({
+  test("supports a custom schema", async () => {
+    const auth = await createTestInstance({
       domain: "localhost:3000",
       schema: {
         walletAddress: {
@@ -633,24 +626,7 @@ describe("custom schema", () => {
         },
       },
     });
-    const nonce = await getNonceFromApi(auth);
-
-    const message = createSiwsMessage({
-      address: account.address,
-      chainId: STACKS_TESTNET.chainId,
-      domain: "localhost:3000",
-      nonce,
-      uri: "http://localhost:3000",
-      version: "1",
-    });
-
-    const signature = signMessage(message, account.privateKey);
-    const res = await verifyWithApi(auth, {
-      walletAddress: account.address,
-      message,
-      signature,
-      chainId: STACKS_TESTNET.chainId,
-    });
+    const res = await signIn(auth);
     expect(res.success).toBe(true);
 
     const ctx = await auth.$context;
