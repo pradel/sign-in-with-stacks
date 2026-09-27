@@ -1,4 +1,8 @@
-import { validateStacksAddress } from "@stacks/transactions";
+import {
+  addressToString,
+  createAddress,
+  validateStacksAddress,
+} from "@stacks/transactions";
 import { InvalidAddressError } from "./errors/address.js";
 
 export function isUri(value: string): boolean | string {
@@ -60,11 +64,18 @@ export function isAddress(address: string): boolean {
 export function isAddressEqual(a: string, b: string): boolean {
   if (!validateStacksAddress(a)) throw new InvalidAddressError({ address: a });
   if (!validateStacksAddress(b)) throw new InvalidAddressError({ address: b });
-  return a === b;
+  return getAddress(a) === getAddress(b);
 }
 
+/**
+ * Returns the canonical c32check representation of a Stacks address.
+ *
+ * c32check decoding is case-insensitive and folds the confusable characters
+ * `O`/`0` and `I`/`L`/`1`, so distinct spellings decode to the same address.
+ * Canonicalizing makes lookups and equality checks stable across spellings.
+ */
 export function getAddress(address: string): string {
   if (!validateStacksAddress(address))
     throw new InvalidAddressError({ address });
-  return address;
+  return addressToString(createAddress(address));
 }

@@ -275,6 +275,15 @@ test("behavior: invalid address", () => {
   `);
 });
 
+test("behavior: canonicalizes equivalent address spellings", () => {
+  const variant = message.address.replace(/0/g, "O");
+  expect(variant).not.toBe(message.address);
+
+  const result = createSiwsMessage({ ...message, address: variant });
+  expect(result).toContain(message.address);
+  expect(result).not.toContain(variant);
+});
+
 test("behavior: invalid chainId", () => {
   expect(() => createSiwsMessage({ ...message, chainId: 1.1 }))
     .toThrowErrorMatchingInlineSnapshot(`

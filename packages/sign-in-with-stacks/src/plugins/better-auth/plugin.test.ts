@@ -15,7 +15,10 @@ const [account, otherAccount] = accounts;
 
 type TestAuth = Awaited<ReturnType<typeof createTestInstance>>;
 
-async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
+async function createTestInstance(
+  pluginOptions?: Parameters<typeof siws>[0],
+  authOptions?: Partial<Omit<Parameters<typeof betterAuth>[0], "database">>,
+) {
   const database = new DatabaseSync(":memory:");
 
   const auth = betterAuth({
@@ -24,6 +27,7 @@ async function createTestInstance(pluginOptions?: Parameters<typeof siws>[0]) {
     emailAndPassword: { enabled: false },
     rateLimit: { enabled: false },
     secret: "better-auth-secret-that-is-long-enough-for-validation-test",
+    ...authOptions,
     plugins: [
       siws(
         pluginOptions ?? {
@@ -166,6 +170,15 @@ describe("nonce endpoint", () => {
     expect(nonce).toMatch(/^[a-zA-Z0-9]{8,}$/);
   });
 
+  test("allows an empty body when generating a nonce", async () => {
+    const auth = await createTestInstance();
+    const res = await postJson(auth, "/siws/nonce", {});
+    expect(res.status).toBe(200);
+
+    const json = (await res.json()) as { nonce: string };
+    expect(json.nonce).toMatch(/^[a-zA-Z0-9]{8,}$/);
+  });
+
   test("uses custom getNonce when provided", async () => {
     const customNonce = "customnoncevalue";
     const auth = await createTestInstance({
@@ -205,13 +218,85 @@ describe("verify endpoint", () => {
     expect(res.user.chainId).toBe(STACKS_TESTNET.chainId);
   });
 
+  test("sets a session cookie usable for authenticated requests", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce });
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await postJson(auth, "/siws/verify", { message, signature });
+    expect(res.status).toBe(200);
+
+    const setCookie = res.headers.get("set-cookie");
+    expect(setCookie).toBeTruthy();
+    const cookie = setCookie?.split(";")[0];
+    expect(cookie).toBeTruthy();
+
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: cookie as string }),
+    });
+    expect(session?.user.id).toBeTypeOf("string");
+  });
+
+  test("creates an account record for the wallet", async () => {
+    const auth = await createTestInstance();
+    const res = await signIn(auth);
+
+    const ctx = await auth.$context;
+    const userAccounts = await ctx.internalAdapter.findAccounts(res.user.id);
+    expect(userAccounts).toContainEqual(
+      expect.objectContaining({
+        providerId: "siws",
+        accountId: `${account.address}:${STACKS_TESTNET.chainId}`,
+      }),
+    );
+  });
+
   test("returns the same user on second sign-in", async () => {
     const auth = await createTestInstance();
     const first = await signIn(auth);
     const second = await signIn(auth);
 
     expect(first.user.id).toBe(second.user.id);
+
+    const ctx = await auth.$context;
+    const users = await ctx.adapter.findMany({ model: "user" });
+    expect(users).toHaveLength(1);
+    const wallets = await ctx.adapter.findMany({
+      model: "walletAddress",
+      where: [
+        { field: "address", operator: "eq", value: account.address },
+        { field: "chainId", operator: "eq", value: STACKS_TESTNET.chainId },
+      ],
+    });
+    expect(wallets).toHaveLength(1);
   });
+
+  test.each([
+    ["O", (address: string) => address.replace(/0/g, "O")],
+    ["I", (address: string) => address.replace(/1/g, "I")],
+    ["L", (address: string) => address.replace(/1/g, "L")],
+  ])(
+    "stores and returns the canonical address for a %s spelling",
+    async (_name, toVariant) => {
+      const auth = await createTestInstance();
+      const variant = toVariant(account.address);
+      expect(variant).not.toBe(account.address);
+
+      const first = await signIn(auth, { address: variant });
+      expect(first.user.walletAddress).toBe(account.address);
+
+      const second = await signIn(auth);
+      expect(second.user.id).toBe(first.user.id);
+
+      const ctx = await auth.$context;
+      const wallets = await ctx.adapter.findMany({
+        model: "walletAddress",
+        where: [{ field: "address", operator: "eq", value: account.address }],
+      });
+      expect(wallets).toHaveLength(1);
+    },
+  );
 
   test("uses the chain id from the signed message", async () => {
     const auth = await createTestInstance();
@@ -294,6 +379,72 @@ describe("verify endpoint", () => {
     expect(error.code).toBe("UNAUTHORIZED_INVALID_OR_EXPIRED_NONCE");
   });
 
+  test.each([
+    { name: "short", nonce: "abc1234" },
+    { name: "non-alphanumeric", nonce: "some-other-nonce" },
+    { name: "oversized", nonce: "A".repeat(251) },
+  ])(
+    "rejects a signed message with a $name nonce before nonce lookup",
+    async ({ nonce }) => {
+      const auth = await createTestInstance();
+      const ctx = await auth.$context;
+      const consumeVerificationValue =
+        ctx.internalAdapter.consumeVerificationValue;
+      let consumed = false;
+      ctx.internalAdapter.consumeVerificationValue = async (identifier) => {
+        consumed = true;
+        return consumeVerificationValue(identifier);
+      };
+
+      try {
+        const message = createMessage({
+          nonce: "ValidNonce12345678",
+        }).replace("Nonce: ValidNonce12345678", `Nonce: ${nonce}`);
+        const signature = signMessage(message, account.privateKey);
+
+        const error = await verifyWithApi(auth, { message, signature }).catch(
+          (e) => e,
+        );
+        expect(error.status).toBe(401);
+        expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_MISMATCH");
+        expect(consumed).toBe(false);
+      } finally {
+        ctx.internalAdapter.consumeVerificationValue = consumeVerificationValue;
+      }
+    },
+  );
+
+  test("rejects a signed message with an invalid address", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce }).replace(
+      account.address,
+      "invalid",
+    );
+    const signature = signMessage(message, account.privateKey);
+
+    const error = await verifyWithApi(auth, { message, signature }).catch(
+      (e) => e,
+    );
+    expect(error.status).toBe(401);
+    expect(error.code).toBe("UNAUTHORIZED_SIWS_MESSAGE_MISMATCH");
+  });
+
+  test("rejects obsolete wallet-bound verify inputs", async () => {
+    const auth = await createTestInstance();
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce });
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await postJson(auth, "/siws/verify", {
+      message,
+      signature,
+      walletAddress: account.address,
+      chainId: STACKS_TESTNET.chainId,
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("prevents nonce reuse", async () => {
     const auth = await createTestInstance();
     const nonce = await getNonceFromApi(auth);
@@ -328,6 +479,12 @@ describe("verify endpoint", () => {
 
     const sessionsAfter = await ctx.adapter.findMany({ model: "session" });
     expect(sessionsAfter.length).toBe(sessionsBefore.length + 1);
+
+    const wallets = await ctx.adapter.findMany({
+      model: "walletAddress",
+      where: [{ field: "address", operator: "eq", value: account.address }],
+    });
+    expect(wallets).toHaveLength(1);
   });
 
   test("rejects an expired nonce and consumes the row", async () => {
@@ -511,6 +668,23 @@ describe("email handling", () => {
     expect(res.status).toBe(400);
   });
 
+  test("rejects an empty email when anonymous is disabled", async () => {
+    const auth = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+    });
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce });
+    const signature = signMessage(message, account.privateKey);
+
+    const res = await postJson(auth, "/siws/verify", {
+      message,
+      signature,
+      email: "",
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("binds a caller-supplied email when unclaimed", async () => {
     const auth = await createTestInstance({
       domain: "localhost:3000",
@@ -525,6 +699,41 @@ describe("email handling", () => {
     });
     expect(user?.email).toBe("stacks@example.com");
   });
+
+  test.each([
+    new Error(
+      "reserveVerificationValue requires database-backed verification storage. Set verification.storeInDatabase to true for flows that reserve verification values.",
+    ),
+    new Error("reservation adapter unavailable"),
+  ])(
+    "keeps the wallet email fallback when email reservation fails with %s",
+    async (reservationError) => {
+      const auth = await createTestInstance({
+        domain: "localhost:3000",
+        anonymous: false,
+      });
+      const ctx = await auth.$context;
+      const reserveVerificationValue =
+        ctx.internalAdapter.reserveVerificationValue;
+      ctx.internalAdapter.reserveVerificationValue = async () => {
+        throw reservationError;
+      };
+
+      try {
+        const res = await signIn(auth, { email: "user@example.com" });
+
+        const user = await ctx.adapter.findOne<{ email: string }>({
+          model: "user",
+          where: [{ field: "id", operator: "eq", value: res.user.id }],
+        });
+        expect(user?.email).toBe(
+          `${account.address.toLowerCase()}@siws.placeholder.invalid`,
+        );
+      } finally {
+        ctx.internalAdapter.reserveVerificationValue = reserveVerificationValue;
+      }
+    },
+  );
 
   test("does not bind an email that already belongs to another account", async () => {
     const auth = await createTestInstance({
@@ -581,6 +790,29 @@ describe("email handling", () => {
     expect(secondUser?.email).toBe(
       `${otherAccount.address.toLowerCase()}@siws.placeholder.invalid`,
     );
+  });
+
+  test("rejects a new wallet user when validateUserInfo returns an error", async () => {
+    const auth = await createTestInstance(
+      { domain: "localhost:3000", anonymous: false },
+      {
+        user: {
+          validateUserInfo({ source }) {
+            expect(source.method).toBe("siws");
+            return {
+              error: "siws_blocked",
+              errorDescription: "SIWS sign-up is not allowed",
+            };
+          },
+        },
+      },
+    );
+
+    const error = await signIn(auth, { email: "siws@example.com" }).catch(
+      (e) => e,
+    );
+    expect(error.code).toBe("siws_blocked");
+    expect(error.message).toBe("SIWS sign-up is not allowed");
   });
 });
 

@@ -6,7 +6,7 @@ import { mergeSchema } from "better-auth/db";
 import * as z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { parseSiwsMessage } from "../../parseSiwsMessage.js";
-import { isAddress } from "../../utils.js";
+import { getAddress, isAddress } from "../../utils.js";
 import { PACKAGE_VERSION } from "../../version.js";
 import { schema, type WalletAddressSchema } from "./schema.js";
 import type {
@@ -149,11 +149,11 @@ export const siws = (options: SIWSPluginOptions) => {
             // address, chain ID, nonce, and time bounds are read from it rather
             // than from the request body.
             const parsedMessage = parseSiwsMessage(message);
-            const { address: walletAddress, chainId, nonce } = parsedMessage;
+            const { address, chainId, nonce } = parsedMessage;
 
             if (
-              !walletAddress ||
-              !isAddress(walletAddress) ||
+              !address ||
+              !isAddress(address) ||
               !isValidSiwsNonce(nonce) ||
               typeof chainId !== "number" ||
               !Number.isInteger(chainId) ||
@@ -163,6 +163,12 @@ export const siws = (options: SIWSPluginOptions) => {
             ) {
               throw siwsMessageMismatchError();
             }
+
+            // Canonicalize the signed address before using it as an identity:
+            // c32check decoding folds case and the confusable characters
+            // `O`/`0` and `I`/`L`/`1`, so equivalent spellings must resolve to
+            // a single wallet record instead of creating duplicate users.
+            const walletAddress = getAddress(address);
 
             const now = new Date();
             if (parsedMessage.expirationTime) {
