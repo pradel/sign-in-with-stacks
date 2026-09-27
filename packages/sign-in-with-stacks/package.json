@@ -55,6 +55,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@better-auth/core": "1.7.6",
     "@stacks/encryption": "^7.6.0",
     "@stacks/network": "^7.6.0",
     "@stacks/transactions": "^7.6.0",
@@ -66,9 +67,10 @@
     "tsdown": "0.23.0",
     "typescript": "5.9.3",
     "vitest": "4.1.8",
-    "zod": "4.3.6"
+    "zod": "4.6.5"
   },
   "peerDependencies": {
+    "@better-auth/core": "^1.7.0",
     "@stacks/common": "^7.0.2",
     "@stacks/encryption": "^7.0.2",
     "@stacks/network": "^7.0.2",
@@ -77,6 +79,9 @@
     "zod": "^3.0.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@better-auth/core": {
+      "optional": true
+    },
     "better-auth": {
       "optional": true
     },

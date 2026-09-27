@@ -81,7 +81,13 @@ async function verifyWithApi(
 describe("siws plugin", () => {
   test("plugin has correct id", () => {
     const plugin = siws({ domain: "example.com" });
-    expect(plugin.id).toBe("sign-in-with-stacks");
+    expect(plugin.id).toBe("siws");
+  });
+
+  test("plugin exposes its options", () => {
+    const options = { domain: "example.com" };
+    const plugin = siws(options);
+    expect(plugin.options).toBe(options);
   });
 
   test("plugin has schema", () => {

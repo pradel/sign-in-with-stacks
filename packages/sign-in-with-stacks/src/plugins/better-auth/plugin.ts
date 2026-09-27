@@ -1,10 +1,11 @@
 import type { BetterAuthPlugin, InferOptionSchema, User } from "better-auth";
-import { APIError, createAuthEndpoint } from "better-auth/api";
+import { APIError, createAuthEndpoint, isAPIError } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { mergeSchema } from "better-auth/db";
-import z from "zod";
+import * as z from "zod";
 import { generateSiwsNonce, verifySiwsMessage } from "../../index.js";
 import { parseSiwsMessage } from "../../parseSiwsMessage.js";
+import { PACKAGE_VERSION } from "../../version.js";
 import { schema, type WalletAddressSchema } from "./schema.js";
 import type {
   ResolveProfileArgs,
@@ -12,6 +13,14 @@ import type {
   SIWSVerifyMessageArgs,
   WalletAddress,
 } from "./types.js";
+
+declare module "@better-auth/core" {
+  interface BetterAuthPluginRegistry<AuthOptions, Options> {
+    siws: {
+      creator: typeof siws;
+    };
+  }
+}
 
 export interface SIWSPluginOptions {
   // The domain name of your application (required for SIWS message generation)
@@ -61,7 +70,8 @@ export const siws = (options: SIWSPluginOptions) => {
     });
 
   return {
-    id: "sign-in-with-stacks",
+    id: "siws",
+    version: PACKAGE_VERSION,
     schema: mergeSchema(schema, options?.schema) as WalletAddressSchema,
     endpoints: {
       nonce: createAuthEndpoint(
@@ -313,7 +323,7 @@ export const siws = (options: SIWSPluginOptions) => {
               },
             });
           } catch (error) {
-            if (error instanceof APIError) throw error;
+            if (isAPIError(error)) throw error;
             throw new APIError("UNAUTHORIZED", {
               message: "Something went wrong. Please try again later.",
               error: error instanceof Error ? error.message : "Unknown error",
@@ -323,6 +333,7 @@ export const siws = (options: SIWSPluginOptions) => {
         },
       ),
     },
+    options,
   } satisfies BetterAuthPlugin;
 };
 
