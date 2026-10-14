@@ -1,12 +1,6 @@
 import { BetterAuthError } from "@better-auth/core/error";
 import { createPlaceholderEmail } from "@better-auth/core/utils/email";
-import type {
-  Account,
-  AuthContext,
-  BetterAuthPlugin,
-  InferOptionSchema,
-  User,
-} from "better-auth";
+import type { BetterAuthPlugin, InferOptionSchema, User } from "better-auth";
 import { APIError, createAuthEndpoint, isAPIError } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { mergeSchema } from "better-auth/db";
@@ -74,79 +68,6 @@ const siwsMessageMismatchError = () =>
     status: 401,
     code: "UNAUTHORIZED_SIWS_MESSAGE_MISMATCH",
   });
-
-const siwsChainIdMismatchError = () =>
-  new APIError("UNAUTHORIZED", {
-    message:
-      "Unauthorized: SIWS message chain ID does not match the chain ID registered for this address",
-    status: 401,
-    code: "UNAUTHORIZED_SIWS_CHAIN_ID_MISMATCH",
-  });
-
-// Inserts a row, or returns the row a concurrent request inserted first when
-// the insert fails on a key collision.
-const insertOrFind = async <T>(
-  insert: () => Promise<T>,
-  find: () => Promise<T | null>,
-): Promise<T> => {
-  try {
-    return await insert();
-  } catch (error) {
-    const existing = await find();
-    if (existing) return existing;
-    throw error;
-  }
-};
-
-// Address mode: a user owns exactly one walletAddress row and one siws account.
-// Both use the address as their id, so concurrent sign-ins collide on the
-// primary key instead of inserting duplicates.
-const ensureAddressWallet = async (
-  context: AuthContext,
-  walletAddress: string,
-  chainId: number,
-) => {
-  const wallet = await insertOrFind(
-    () =>
-      context.adapter.create<Record<string, unknown>, WalletAddress>({
-        model: "walletAddress",
-        data: {
-          id: walletAddress,
-          userId: walletAddress,
-          address: walletAddress,
-          chainId,
-          isPrimary: true,
-          createdAt: new Date(),
-        },
-        forceAllowId: true,
-      }),
-    () =>
-      context.adapter.findOne<WalletAddress>({
-        model: "walletAddress",
-        where: [{ field: "id", operator: "eq", value: walletAddress }],
-      }),
-  );
-  if (Number(wallet.chainId) !== chainId) {
-    throw siwsChainIdMismatchError();
-  }
-
-  await insertOrFind(
-    () =>
-      context.internalAdapter.createAccount({
-        id: walletAddress,
-        userId: walletAddress,
-        providerId: "siws",
-        accountId: `${walletAddress}:${chainId}`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-    () =>
-      context.adapter.findOne<Account>({
-        model: "account",
-        where: [{ field: "id", operator: "eq", value: walletAddress }],
-      }),
-  );
-};
 
 export const siws = (options: SIWSPluginOptions) => {
   const verifyMessage =
@@ -360,7 +281,12 @@ export const siws = (options: SIWSPluginOptions) => {
               if (anyWalletAddress) {
                 // Address mode: the first sign-in fixes the chain ID.
                 if (userIdStrategy === "address") {
-                  throw siwsChainIdMismatchError();
+                  throw new APIError("UNAUTHORIZED", {
+                    message:
+                      "Unauthorized: SIWS message chain ID does not match the chain ID registered for this address",
+                    status: 401,
+                    code: "UNAUTHORIZED_SIWS_CHAIN_ID_MISMATCH",
+                  });
                 }
                 // Same address exists on different chain, get that user
                 user = await ctx.context.adapter.findOne({
@@ -427,29 +353,17 @@ export const siws = (options: SIWSPluginOptions) => {
                 (await options.resolveProfile?.({ walletAddress })) ?? {};
 
               const createSIWSUser = (newUserEmail: string) =>
-                ctx.context.internalAdapter
-                  .createUser(
-                    {
-                      ...(userIdStrategy === "address"
-                        ? { id: walletAddress }
-                        : {}),
-                      name: name ?? walletAddress,
-                      email: newUserEmail,
-                      image: avatar ?? "",
-                    },
-                    { method: "siws" },
-                  )
-                  .catch(async (error: unknown) => {
-                    // Address mode: a concurrent sign-in created the user first.
-                    const racedUser =
-                      userIdStrategy === "address"
-                        ? await ctx.context.internalAdapter.findUserById(
-                            walletAddress,
-                          )
-                        : null;
-                    if (!racedUser) throw error;
-                    return racedUser;
-                  });
+                ctx.context.internalAdapter.createUser(
+                  {
+                    ...(userIdStrategy === "address"
+                      ? { id: walletAddress }
+                      : {}),
+                    name: name ?? walletAddress,
+                    email: newUserEmail,
+                    image: avatar ?? "",
+                  },
+                  { method: "siws" },
+                );
 
               try {
                 user = await createSIWSUser(userEmail);
@@ -477,7 +391,28 @@ export const siws = (options: SIWSPluginOptions) => {
 
             if (userIdStrategy === "address") {
               if (!existingWalletAddress) {
-                await ensureAddressWallet(ctx.context, walletAddress, chainId);
+                // The wallet row uses the address as its id, so concurrent
+                // sign-ins for one user collide instead of inserting duplicates.
+                await ctx.context.adapter.create({
+                  model: "walletAddress",
+                  data: {
+                    id: walletAddress,
+                    userId: user.id,
+                    address: walletAddress,
+                    chainId,
+                    isPrimary: true,
+                    createdAt: new Date(),
+                  },
+                  forceAllowId: true,
+                });
+
+                await ctx.context.internalAdapter.createAccount({
+                  userId: user.id,
+                  providerId: "siws",
+                  accountId: `${walletAddress}:${chainId}`,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
               }
             } else if (isNewUser) {
               // Create wallet address record

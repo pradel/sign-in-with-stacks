@@ -997,38 +997,32 @@ describe("address user id strategy", () => {
     expect(user?.name).toBe("Imported");
   });
 
-  test("keeps one wallet row when concurrent sign-ins claim the same user", async () => {
-    const auth = await createTestInstance(addressMode);
-    await insertUserWithoutPlugin(auth);
+  test.each([
+    { name: "a new user", preexisting: false },
+    { name: "a user inserted without the plugin", preexisting: true },
+  ])(
+    "keeps one user, wallet, and account when first sign-ins race for $name",
+    async ({ preexisting }) => {
+      const auth = await createTestInstance(addressMode);
+      if (preexisting) await insertUserWithoutPlugin(auth);
 
-    const results = await Promise.all([signIn(auth), signIn(auth)]);
+      const results = await Promise.allSettled([signIn(auth), signIn(auth)]);
 
-    expect(results.map((res) => res.user.id)).toEqual([
-      account.address,
-      account.address,
-    ]);
-    expect(await countRows(auth)).toEqual({
-      users: 1,
-      wallets: 1,
-      accounts: 1,
-      sessions: 2,
-    });
-  });
-
-  test("keeps one user when first sign-ins race", async () => {
-    const auth = await createTestInstance(addressMode);
-
-    const results = await Promise.all([signIn(auth), signIn(auth)]);
-
-    expect(results.map((res) => res.user.id)).toEqual([
-      account.address,
-      account.address,
-    ]);
-    expect(await countRows(auth)).toEqual({
-      users: 1,
-      wallets: 1,
-      accounts: 1,
-      sessions: 2,
-    });
-  });
+      // The losing request fails on a key collision, like in generated mode.
+      const fulfilled = results.filter(
+        (result) => result.status === "fulfilled",
+      );
+      const rejected = results.filter((result) => result.status === "rejected");
+      expect(fulfilled.map((result) => result.value.user.id)).toEqual([
+        account.address,
+      ]);
+      expect(rejected.map((result) => result.reason.status)).toEqual([401]);
+      expect(await countRows(auth)).toEqual({
+        users: 1,
+        wallets: 1,
+        accounts: 1,
+        sessions: 1,
+      });
+    },
+  );
 });
