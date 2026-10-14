@@ -8,6 +8,7 @@ import { getMigrations } from "better-auth/db/migration";
 import { describe, expect, test } from "vitest";
 import { accounts } from "../../../test/constants.js";
 import { createSiwsMessage } from "../../createSiwsMessage.js";
+import { getAddress } from "../../index.js";
 import { siws } from "./plugin.js";
 import type { SIWSVerifyMessageArgs } from "./types.js";
 
@@ -141,6 +142,16 @@ async function signIn(
     signature,
     ...(options?.email !== undefined ? { email: options.email } : {}),
   });
+}
+
+async function countRows(auth: TestAuth) {
+  const ctx = await auth.$context;
+  const [users, wallets, accounts, sessions] = await Promise.all(
+    ["user", "walletAddress", "account", "session"].map((model) =>
+      ctx.adapter.count({ model }),
+    ),
+  );
+  return { users, wallets, accounts, sessions };
 }
 
 describe("siws plugin", () => {
@@ -874,6 +885,308 @@ describe("plugin options", () => {
       address: account.address,
       chainId: STACKS_TESTNET.chainId,
       isPrimary: true,
+    });
+  });
+});
+
+const addressMode = {
+  domain: "localhost:3000",
+  userIdStrategy: "address",
+} as const;
+
+describe("address user id strategy", () => {
+  test("uses the canonical address as the user id", async () => {
+    const auth = await createTestInstance(addressMode);
+    const res = await signIn(auth);
+
+    expect(res.user.id).toBe(getAddress(account.address));
+
+    const ctx = await auth.$context;
+    const wallets = await ctx.adapter.findMany({ model: "walletAddress" });
+    expect(wallets).toEqual([
+      expect.objectContaining({
+        userId: res.user.id,
+        address: account.address,
+        chainId: STACKS_TESTNET.chainId,
+        isPrimary: true,
+      }),
+    ]);
+    const userAccounts = await ctx.adapter.findMany({ model: "account" });
+    expect(userAccounts).toEqual([
+      expect.objectContaining({
+        userId: res.user.id,
+        providerId: "siws",
+        accountId: `${account.address}:${STACKS_TESTNET.chainId}`,
+      }),
+    ]);
+  });
+
+  test("resolves a non-canonical spelling to the canonical id", async () => {
+    const auth = await createTestInstance(addressMode);
+    // The `S` + version prefix must stay uppercase; the c32 payload folds case.
+    const variant = `${account.address.slice(0, 2)}${account.address.slice(2).toLowerCase()}`;
+    expect(variant).not.toBe(account.address);
+
+    const res = await signIn(auth, { address: variant });
+    expect(res.user.id).toBe(account.address);
+    expect(res.user.walletAddress).toBe(account.address);
+  });
+
+  test("returns the same user on a second sign-in without adding rows", async () => {
+    const auth = await createTestInstance(addressMode);
+    const first = await signIn(auth);
+    const before = await countRows(auth);
+
+    const second = await signIn(auth);
+
+    expect(second.user.id).toBe(first.user.id);
+    const after = await countRows(auth);
+    expect(after).toEqual({ ...before, sessions: before.sessions + 1 });
+  });
+
+  test("rejects the same address on a different chain id", async () => {
+    const auth = await createTestInstance(addressMode);
+    await signIn(auth);
+    const before = await countRows(auth);
+
+    const nonce = await getNonceFromApi(auth);
+    const message = createMessage({ nonce, chainId: 2 });
+    const signature = signMessage(message, account.privateKey);
+    const res = await postJson(auth, "/siws/verify", { message, signature });
+
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe("UNAUTHORIZED_SIWS_CHAIN_ID_MISMATCH");
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(await countRows(auth)).toEqual(before);
+  });
+
+  test("claims a provisioned user on sign-in", async () => {
+    const auth = await createTestInstance(addressMode);
+    const provisioned = await auth.api.provisionUser({
+      body: { address: account.address, chainId: STACKS_TESTNET.chainId },
+    });
+    expect(provisioned).toEqual({
+      user: { id: account.address },
+      walletAddress: account.address,
+      chainId: STACKS_TESTNET.chainId,
+      created: true,
+    });
+    const before = await countRows(auth);
+    expect(before).toEqual({ users: 1, wallets: 1, accounts: 1, sessions: 0 });
+
+    const res = await signIn(auth);
+
+    expect(res.user.id).toBe(account.address);
+    expect(res.token).toBeTypeOf("string");
+    expect(await countRows(auth)).toEqual({ ...before, sessions: 1 });
+  });
+
+  test("provisions idempotently", async () => {
+    const auth = await createTestInstance(addressMode);
+    const body = { address: account.address, chainId: STACKS_TESTNET.chainId };
+
+    const first = await auth.api.provisionUser({ body });
+    const second = await auth.api.provisionUser({ body });
+
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.user.id).toBe(first.user.id);
+    expect(await countRows(auth)).toEqual({
+      users: 1,
+      wallets: 1,
+      accounts: 1,
+      sessions: 0,
+    });
+  });
+
+  async function insertUserWithoutPlugin(auth: TestAuth) {
+    const ctx = await auth.$context;
+    await ctx.adapter.create({
+      model: "user",
+      data: {
+        id: account.address,
+        name: "Imported",
+        email: "imported@example.com",
+        emailVerified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      forceAllowId: true,
+    });
+  }
+
+  test("creates the wallet rows for a user inserted without the plugin", async () => {
+    const auth = await createTestInstance(addressMode);
+    await insertUserWithoutPlugin(auth);
+
+    const res = await signIn(auth);
+
+    expect(res.user.id).toBe(account.address);
+    expect(await countRows(auth)).toEqual({
+      users: 1,
+      wallets: 1,
+      accounts: 1,
+      sessions: 1,
+    });
+    const ctx = await auth.$context;
+    const user = await ctx.adapter.findOne<{ name: string }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: account.address }],
+    });
+    expect(user?.name).toBe("Imported");
+  });
+
+  test("keeps one wallet row when concurrent sign-ins claim the same user", async () => {
+    const auth = await createTestInstance(addressMode);
+    await insertUserWithoutPlugin(auth);
+
+    const results = await Promise.all([signIn(auth), signIn(auth)]);
+
+    expect(results.map((res) => res.user.id)).toEqual([
+      account.address,
+      account.address,
+    ]);
+    expect(await countRows(auth)).toEqual({
+      users: 1,
+      wallets: 1,
+      accounts: 1,
+      sessions: 2,
+    });
+  });
+
+  test("keeps one user when first sign-ins race", async () => {
+    const auth = await createTestInstance(addressMode);
+
+    const results = await Promise.all([signIn(auth), signIn(auth)]);
+
+    expect(results.map((res) => res.user.id)).toEqual([
+      account.address,
+      account.address,
+    ]);
+    expect(await countRows(auth)).toEqual({
+      users: 1,
+      wallets: 1,
+      accounts: 1,
+      sessions: 2,
+    });
+  });
+
+  test("keeps one user when provisioning races a sign-in", async () => {
+    const auth = await createTestInstance(addressMode);
+
+    const [provisioned, res] = await Promise.all([
+      auth.api.provisionUser({
+        body: { address: account.address, chainId: STACKS_TESTNET.chainId },
+      }),
+      signIn(auth),
+    ]);
+
+    expect(provisioned.user.id).toBe(account.address);
+    expect(res.user.id).toBe(account.address);
+    expect(await countRows(auth)).toEqual({
+      users: 1,
+      wallets: 1,
+      accounts: 1,
+      sessions: 1,
+    });
+  });
+});
+
+describe("provisionUser", () => {
+  test.each([
+    { name: "an invalid address", address: "invalid", chainId: 1 },
+    { name: "a zero chain id", address: account.address, chainId: 0 },
+    {
+      name: "an oversized chain id",
+      address: account.address,
+      chainId: 4294967296,
+    },
+  ])("rejects $name", async ({ address, chainId }) => {
+    const auth = await createTestInstance(addressMode);
+
+    const error = await auth.api
+      .provisionUser({ body: { address, chainId } })
+      .catch((e) => e);
+
+    expect(error.statusCode).toBe(400);
+    expect((await countRows(auth)).users).toBe(0);
+  });
+
+  test.each(["/provision-user", "/provisionUser", "/siws/provision-user"])(
+    "is not routed over HTTP at %s",
+    async (path) => {
+      const auth = await createTestInstance(addressMode);
+
+      const res = await postJson(auth, path, {
+        address: account.address,
+        chainId: STACKS_TESTNET.chainId,
+      });
+
+      expect(res.status).toBe(404);
+      expect((await countRows(auth)).users).toBe(0);
+    },
+  );
+
+  test("uses resolveProfile and the wallet-derived email, never a caller email", async () => {
+    const auth = await createTestInstance({
+      domain: "localhost:3000",
+      anonymous: false,
+      emailDomainName: "myapp.com",
+      resolveProfile: async ({ walletAddress }) => ({
+        name: `bns:${walletAddress}`,
+        avatar: "https://example.com/avatar.png",
+      }),
+    });
+
+    const rejected = await auth.api
+      .provisionUser({
+        body: {
+          address: account.address,
+          chainId: STACKS_TESTNET.chainId,
+          // @ts-expect-error provisionUser does not accept an email
+          email: "user@example.com",
+        },
+      })
+      .catch((e) => e);
+    expect(rejected.statusCode).toBe(400);
+
+    const res = await auth.api.provisionUser({
+      body: { address: account.address, chainId: STACKS_TESTNET.chainId },
+    });
+
+    const ctx = await auth.$context;
+    const user = await ctx.adapter.findOne<{
+      name: string;
+      image: string;
+      email: string;
+    }>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: res.user.id }],
+    });
+    expect(user).toMatchObject({
+      name: `bns:${account.address}`,
+      image: "https://example.com/avatar.png",
+      email: `${account.address.toLowerCase()}@myapp.com`,
+    });
+  });
+
+  test("uses a generated id in generated mode and is found by a later sign-in", async () => {
+    const auth = await createTestInstance();
+
+    const provisioned = await auth.api.provisionUser({
+      body: { address: account.address, chainId: STACKS_TESTNET.chainId },
+    });
+    expect(provisioned.created).toBe(true);
+    expect(provisioned.user.id).not.toBe(account.address);
+
+    const res = await signIn(auth);
+
+    expect(res.user.id).toBe(provisioned.user.id);
+    expect(await countRows(auth)).toEqual({
+      users: 1,
+      wallets: 1,
+      accounts: 1,
+      sessions: 1,
     });
   });
 });

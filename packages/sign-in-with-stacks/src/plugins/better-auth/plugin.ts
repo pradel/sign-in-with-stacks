@@ -1,5 +1,12 @@
+import { BetterAuthError } from "@better-auth/core/error";
 import { createPlaceholderEmail } from "@better-auth/core/utils/email";
-import type { BetterAuthPlugin, InferOptionSchema, User } from "better-auth";
+import type {
+  Account,
+  AuthContext,
+  BetterAuthPlugin,
+  InferOptionSchema,
+  User,
+} from "better-auth";
 import { APIError, createAuthEndpoint, isAPIError } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { mergeSchema } from "better-auth/db";
@@ -41,6 +48,8 @@ export interface SIWSPluginOptions {
     ((args: ResolveProfileArgs) => Promise<ResolveProfileResult>) | undefined;
   // Custom schema for the plugin's walletAddress table
   schema?: InferOptionSchema<typeof schema> | undefined;
+  // How user ids are assigned. "generated" (default) lets better-auth generate them. "address" makes `user.id` the canonical Stacks address: one user per address, with the chain id fixed by its first sign-in or provision
+  userIdStrategy?: "generated" | "address" | undefined;
 }
 
 const SIWS_VERIFICATION_IDENTIFIER_PREFIX = "siws:";
@@ -66,6 +75,29 @@ const siwsMessageMismatchError = () =>
     code: "UNAUTHORIZED_SIWS_MESSAGE_MISMATCH",
   });
 
+const siwsChainIdMismatchError = () =>
+  new APIError("UNAUTHORIZED", {
+    message:
+      "Unauthorized: SIWS message chain ID does not match the chain ID registered for this address",
+    status: 401,
+    code: "UNAUTHORIZED_SIWS_CHAIN_ID_MISMATCH",
+  });
+
+// Inserts a row, or returns the row a concurrent request inserted first when
+// the insert fails on a key collision.
+const insertOrFind = async <T>(
+  insert: () => Promise<T>,
+  find: () => Promise<T | null>,
+): Promise<T> => {
+  try {
+    return await insert();
+  } catch (error) {
+    const existing = await find();
+    if (existing) return existing;
+    throw error;
+  }
+};
+
 export const siws = (options: SIWSPluginOptions) => {
   const verifyMessage =
     options.verifyMessage ??
@@ -80,10 +112,300 @@ export const siws = (options: SIWSPluginOptions) => {
       });
     });
 
+  const userIdStrategy = options.userIdStrategy ?? "generated";
+
+  const findUserById = (context: AuthContext, id: string) =>
+    context.adapter.findOne<User>({
+      model: "user",
+      where: [{ field: "id", operator: "eq", value: id }],
+    });
+
+  // Creates the user for a wallet with the wallet-derived email, binding the
+  // caller email only when it is unclaimed (verify with anonymous disabled).
+  const createWalletUser = async (
+    context: AuthContext,
+    walletAddress: string,
+    email: string | undefined,
+  ): Promise<{ user: User; created: boolean }> => {
+    const isAnon = options.anonymous ?? true;
+    const normalizedEmail = email?.toLowerCase();
+    const walletEmail = options.emailDomainName
+      ? `${walletAddress}@${options.emailDomainName}`
+      : createPlaceholderEmail({
+          identifier: walletAddress,
+          namespace: "siws",
+        });
+    // SIWS proves wallet control, not email ownership: bind the caller
+    // email only when unclaimed and atomically reserved, else keep
+    // the wallet-derived address. Silent fallback avoids an
+    // enumeration oracle.
+    let userEmail = walletEmail;
+    let emailClaimIdentifier: string | undefined;
+    if (!isAnon && normalizedEmail) {
+      const identifier = `siws-email-claim-${normalizedEmail}`;
+      let reserved = false;
+      try {
+        reserved = await context.internalAdapter.reserveVerificationValue({
+          identifier,
+          value: walletAddress,
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+      } catch {
+        reserved = false;
+      }
+      if (reserved) {
+        emailClaimIdentifier = identifier;
+        const existingUser =
+          await context.internalAdapter.findUserByEmail(normalizedEmail);
+        if (!existingUser) {
+          userEmail = normalizedEmail;
+        }
+      }
+    }
+    const { name, avatar } =
+      (await options.resolveProfile?.({ walletAddress })) ?? {};
+
+    const createSIWSUser = async (newUserEmail: string) => {
+      try {
+        const user = await context.internalAdapter.createUser(
+          {
+            ...(userIdStrategy === "address" ? { id: walletAddress } : {}),
+            name: name ?? walletAddress,
+            email: newUserEmail,
+            image: avatar ?? "",
+          },
+          { method: "siws" },
+        );
+        return { user, created: true };
+      } catch (error) {
+        // A concurrent sign-in or provision created the address user first.
+        if (userIdStrategy === "address") {
+          const racedUser = await findUserById(context, walletAddress);
+          if (racedUser) return { user: racedUser, created: false };
+        }
+        throw error;
+      }
+    };
+
+    try {
+      return await createSIWSUser(userEmail);
+    } catch (error) {
+      if (userEmail !== normalizedEmail || !normalizedEmail) {
+        throw error;
+      }
+      const claimedUser =
+        await context.internalAdapter.findUserByEmail(normalizedEmail);
+      if (!claimedUser) {
+        throw error;
+      }
+      userEmail = walletEmail;
+      return await createSIWSUser(userEmail);
+    } finally {
+      if (emailClaimIdentifier) {
+        await context.internalAdapter
+          .consumeVerificationValue(emailClaimIdentifier)
+          .catch(() => {});
+      }
+    }
+  };
+
+  // Address mode: a user owns exactly one walletAddress row and one siws
+  // account. Both use the address as their id, so concurrent claims collide on
+  // the primary key instead of inserting duplicates.
+  const ensureAddressWallet = async (
+    context: AuthContext,
+    userId: string,
+    walletAddress: string,
+    chainId: number,
+  ) => {
+    const wallets = await context.adapter.findMany<WalletAddress>({
+      model: "walletAddress",
+      where: [{ field: "userId", operator: "eq", value: userId }],
+    });
+    if (wallets.length > 0) {
+      if (!wallets.some((wallet) => Number(wallet.chainId) === chainId)) {
+        throw siwsChainIdMismatchError();
+      }
+      return;
+    }
+
+    const wallet = await insertOrFind(
+      () =>
+        context.adapter.create<Record<string, unknown>, WalletAddress>({
+          model: "walletAddress",
+          data: {
+            id: walletAddress,
+            userId,
+            address: walletAddress,
+            chainId,
+            isPrimary: true,
+            createdAt: new Date(),
+          },
+          forceAllowId: true,
+        }),
+      () =>
+        context.adapter.findOne<WalletAddress>({
+          model: "walletAddress",
+          where: [{ field: "id", operator: "eq", value: walletAddress }],
+        }),
+    );
+    if (Number(wallet.chainId) !== chainId) {
+      throw siwsChainIdMismatchError();
+    }
+
+    await insertOrFind(
+      () =>
+        context.internalAdapter.createAccount({
+          id: walletAddress,
+          userId,
+          providerId: "siws",
+          accountId: `${walletAddress}:${chainId}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      () =>
+        context.adapter.findOne<Account>({
+          model: "account",
+          where: [{ field: "id", operator: "eq", value: walletAddress }],
+        }),
+    );
+  };
+
+  const resolveAddressUser = async (
+    context: AuthContext,
+    walletAddress: string,
+    chainId: number,
+    email: string | undefined,
+  ): Promise<{ user: User; created: boolean }> => {
+    const addressUser = await findUserById(context, walletAddress);
+    if (addressUser) {
+      await ensureAddressWallet(
+        context,
+        addressUser.id,
+        walletAddress,
+        chainId,
+      );
+      return { user: addressUser, created: false };
+    }
+
+    const result = await createWalletUser(context, walletAddress, email);
+    await ensureAddressWallet(context, result.user.id, walletAddress, chainId);
+    return result;
+  };
+
+  // Finds or creates the user owning `walletAddress`, including its
+  // walletAddress and siws account rows. Shared by verify and provisionUser.
+  const resolveWalletUser = async (
+    context: AuthContext,
+    {
+      walletAddress,
+      chainId,
+      email,
+    }: { walletAddress: string; chainId: number; email: string | undefined },
+  ): Promise<{ user: User; created: boolean }> => {
+    if (userIdStrategy === "address") {
+      return resolveAddressUser(context, walletAddress, chainId, email);
+    }
+
+    // Look for existing user by their wallet addresses
+    let user: User | null = null;
+
+    // Check if there's a wallet address record for this exact address+chainId combination
+    const existingWalletAddress: WalletAddress | null =
+      await context.adapter.findOne({
+        model: "walletAddress",
+        where: [
+          { field: "address", operator: "eq", value: walletAddress },
+          { field: "chainId", operator: "eq", value: chainId },
+        ],
+      });
+
+    if (existingWalletAddress) {
+      // Get the user associated with this wallet address
+      user = await findUserById(context, existingWalletAddress.userId);
+    } else {
+      // No exact match found, check if this address exists on any other chain
+      const anyWalletAddress: WalletAddress | null =
+        await context.adapter.findOne({
+          model: "walletAddress",
+          where: [{ field: "address", operator: "eq", value: walletAddress }],
+        });
+
+      if (anyWalletAddress) {
+        // Same address exists on different chain, get that user
+        user = await findUserById(context, anyWalletAddress.userId);
+      }
+    }
+
+    if (user) {
+      // User exists, but check if this specific address/chain combo exists
+      if (!existingWalletAddress) {
+        // Add this new chainId to existing user's addresses
+        await context.adapter.create({
+          model: "walletAddress",
+          data: {
+            userId: user.id,
+            address: walletAddress,
+            chainId,
+            isPrimary: false, // Additional addresses are not primary by default
+            createdAt: new Date(),
+          },
+        });
+
+        // Create account record for this new wallet+chain combination
+        await context.internalAdapter.createAccount({
+          userId: user.id,
+          providerId: "siws",
+          accountId: `${walletAddress}:${chainId}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+      return { user, created: false };
+    }
+
+    // Create new user if none exists
+    const result = await createWalletUser(context, walletAddress, email);
+
+    // Create wallet address record
+    await context.adapter.create<WalletAddress>({
+      model: "walletAddress",
+      data: {
+        userId: result.user.id,
+        address: walletAddress,
+        chainId,
+        isPrimary: true, // First address is primary
+        createdAt: new Date(),
+      },
+    });
+
+    // Create account record for wallet authentication
+    await context.internalAdapter.createAccount({
+      userId: result.user.id,
+      providerId: "siws",
+      accountId: `${walletAddress}:${chainId}`,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    return result;
+  };
+
   return {
     id: "siws",
     version: PACKAGE_VERSION,
     schema: mergeSchema(schema, options?.schema) as WalletAddressSchema,
+    init(ctx) {
+      const generateId = ctx.options.advanced?.database?.generateId;
+      if (
+        userIdStrategy === "address" &&
+        (generateId === "serial" || generateId === "uuid")
+      ) {
+        throw new BetterAuthError(
+          `siws({ userIdStrategy: "address" }) requires string user ids and does not support advanced.database.generateId "${generateId}".`,
+        );
+      }
+    },
     endpoints: {
       nonce: createAuthEndpoint(
         "/siws/nonce",
@@ -227,176 +549,11 @@ export const siws = (options: SIWSPluginOptions) => {
               });
             }
 
-            // Look for existing user by their wallet addresses
-            let user: User | null = null;
-
-            // Check if there's a wallet address record for this exact address+chainId combination
-            const existingWalletAddress: WalletAddress | null =
-              await ctx.context.adapter.findOne({
-                model: "walletAddress",
-                where: [
-                  { field: "address", operator: "eq", value: walletAddress },
-                  { field: "chainId", operator: "eq", value: chainId },
-                ],
-              });
-
-            if (existingWalletAddress) {
-              // Get the user associated with this wallet address
-              user = await ctx.context.adapter.findOne({
-                model: "user",
-                where: [
-                  {
-                    field: "id",
-                    operator: "eq",
-                    value: existingWalletAddress.userId,
-                  },
-                ],
-              });
-            } else {
-              // No exact match found, check if this address exists on any other chain
-              const anyWalletAddress: WalletAddress | null =
-                await ctx.context.adapter.findOne({
-                  model: "walletAddress",
-                  where: [
-                    { field: "address", operator: "eq", value: walletAddress },
-                  ],
-                });
-
-              if (anyWalletAddress) {
-                // Same address exists on different chain, get that user
-                user = await ctx.context.adapter.findOne({
-                  model: "user",
-                  where: [
-                    {
-                      field: "id",
-                      operator: "eq",
-                      value: anyWalletAddress.userId,
-                    },
-                  ],
-                });
-              }
-            }
-
-            // Create new user if none exists
-            if (!user) {
-              const normalizedEmail = email?.toLowerCase();
-              const walletEmail = options.emailDomainName
-                ? `${walletAddress}@${options.emailDomainName}`
-                : createPlaceholderEmail({
-                    identifier: walletAddress,
-                    namespace: "siws",
-                  });
-              // SIWS proves wallet control, not email ownership: bind the caller
-              // email only when unclaimed and atomically reserved, else keep
-              // the wallet-derived address. Silent fallback avoids an
-              // enumeration oracle.
-              let userEmail = walletEmail;
-              let emailClaimIdentifier: string | undefined;
-              if (!isAnon && normalizedEmail) {
-                const identifier = `siws-email-claim-${normalizedEmail}`;
-                let reserved = false;
-                try {
-                  reserved =
-                    await ctx.context.internalAdapter.reserveVerificationValue({
-                      identifier,
-                      value: walletAddress,
-                      expiresAt: new Date(Date.now() + 60_000),
-                    });
-                } catch {
-                  reserved = false;
-                }
-                if (reserved) {
-                  emailClaimIdentifier = identifier;
-                  const existingUser =
-                    await ctx.context.internalAdapter.findUserByEmail(
-                      normalizedEmail,
-                    );
-                  if (!existingUser) {
-                    userEmail = normalizedEmail;
-                  }
-                }
-              }
-              const { name, avatar } =
-                (await options.resolveProfile?.({ walletAddress })) ?? {};
-
-              const createSIWSUser = (newUserEmail: string) =>
-                ctx.context.internalAdapter.createUser(
-                  {
-                    name: name ?? walletAddress,
-                    email: newUserEmail,
-                    image: avatar ?? "",
-                  },
-                  { method: "siws" },
-                );
-
-              try {
-                user = await createSIWSUser(userEmail);
-              } catch (error) {
-                if (userEmail !== normalizedEmail || !normalizedEmail) {
-                  throw error;
-                }
-                const claimedUser =
-                  await ctx.context.internalAdapter.findUserByEmail(
-                    normalizedEmail,
-                  );
-                if (!claimedUser) {
-                  throw error;
-                }
-                userEmail = walletEmail;
-                user = await createSIWSUser(userEmail);
-              } finally {
-                if (emailClaimIdentifier) {
-                  await ctx.context.internalAdapter
-                    .consumeVerificationValue(emailClaimIdentifier)
-                    .catch(() => {});
-                }
-              }
-
-              // Create wallet address record
-              await ctx.context.adapter.create<WalletAddress>({
-                model: "walletAddress",
-                data: {
-                  userId: user.id,
-                  address: walletAddress,
-                  chainId,
-                  isPrimary: true, // First address is primary
-                  createdAt: new Date(),
-                },
-              });
-
-              // Create account record for wallet authentication
-              await ctx.context.internalAdapter.createAccount({
-                userId: user.id,
-                providerId: "siws",
-                accountId: `${walletAddress}:${chainId}`,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-            } else {
-              // User exists, but check if this specific address/chain combo exists
-              if (!existingWalletAddress) {
-                // Add this new chainId to existing user's addresses
-                await ctx.context.adapter.create({
-                  model: "walletAddress",
-                  data: {
-                    userId: user.id,
-                    address: walletAddress,
-                    chainId,
-                    isPrimary: false, // Additional addresses are not primary by default
-                    createdAt: new Date(),
-                  },
-                });
-
-                // Create account record for this new wallet+chain combination
-                await ctx.context.internalAdapter.createAccount({
-                  userId: user.id,
-                  providerId: "siws",
-                  accountId: `${walletAddress}:${chainId}`,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                });
-              }
-            }
+            const { user } = await resolveWalletUser(ctx.context, {
+              walletAddress,
+              chainId,
+              email,
+            });
 
             const session = await ctx.context.internalAdapter.createSession(
               user.id,
@@ -428,6 +585,36 @@ export const siws = (options: SIWSPluginOptions) => {
               status: 401,
             });
           }
+        },
+      ),
+
+      provisionUser: createAuthEndpoint.serverOnly(
+        {
+          method: "POST",
+          body: z
+            .object({
+              address: z
+                .string()
+                .refine(isAddress, { message: "Invalid Stacks address." }),
+              chainId: z.number().int().min(1).max(SIWS_MAX_CHAIN_ID),
+            })
+            .strict(),
+        },
+        async (ctx) => {
+          const walletAddress = getAddress(ctx.body.address);
+          const { chainId } = ctx.body;
+          // Never binds a caller email: provisioning proves nothing about one.
+          const { user, created } = await resolveWalletUser(ctx.context, {
+            walletAddress,
+            chainId,
+            email: undefined,
+          });
+          return ctx.json({
+            user: { id: user.id },
+            walletAddress,
+            chainId,
+            created,
+          });
         },
       ),
     },

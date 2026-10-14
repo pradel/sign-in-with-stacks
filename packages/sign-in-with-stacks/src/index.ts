@@ -15,3 +15,4 @@ export {
   type VerifySiwsMessageParameters,
   type VerifySiwsMessageReturnType,
 } from "./verifySiwsMessage.js";
+export { getAddress } from "./utils.js";
