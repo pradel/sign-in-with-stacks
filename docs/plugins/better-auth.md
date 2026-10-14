@@ -265,7 +265,7 @@ siws({
 
 ### User ID = Stacks Address
 
-Set `userIdStrategy: "address"` to key users by their Stacks address instead of a generated id. This lets your own tables (profiles, posts, ...) reference a user by address, even before that user has signed in.
+Set `userIdStrategy: "address"` to key users by their Stacks address instead of a generated id. This lets your own tables (profiles, posts, ...) reference a user by address.
 
 ```ts
 siws({
@@ -277,29 +277,12 @@ siws({
 In this mode:
 
 - **Identity**: `user.id` is the canonical address returned by `getAddress`. Every spelling of the same address (lowercase, `O`/`0`, `I`/`L`/`1`) resolves to the same user. Each user owns exactly one `walletAddress` row and one `siws` account.
-- **Chain ID**: the first sign-in or provision fixes the chain ID. A later sign-in for the same address with a different chain ID is rejected with `401` and code `UNAUTHORIZED_SIWS_CHAIN_ID_MISMATCH`, without creating rows or a session.
+- **Chain ID**: the first sign-in fixes the chain ID. A later sign-in for the same address with a different chain ID is rejected with `401` and code `UNAUTHORIZED_SIWS_CHAIN_ID_MISMATCH`, without creating rows or a session.
 - **Claim**: if a user with `id` equal to the address already exists without a `walletAddress` row (for example, inserted by a data import), the first sign-in creates the missing `walletAddress` and `account` rows and signs in as that user.
 - **Fixed at setup**: choose the strategy when you set up the plugin and keep it. The plugin does not look up or migrate users with generated ids; if you enable it on an existing database, migrating the data is your responsibility.
-- **Concurrency**: concurrent first sign-ins or provisions for one address end with exactly one user, one `walletAddress` row, and one `account` row.
+- **Concurrency**: concurrent first sign-ins for one address end with exactly one user, one `walletAddress` row, and one `account` row.
 
 The mode requires string ids long enough to hold a Stacks address (41 characters). `advanced.database.generateId: "uuid"` and `"serial"` are rejected at startup. The default Better Auth schemas use `text` ids on PostgreSQL and SQLite; on MySQL and MSSQL they use `varchar(36)`, so widen the `user.id` column and the columns that reference it, as well as `account.id` and `walletAddress.id`.
-
-#### Provisioning Users on the Server
-
-`auth.api.provisionUser` creates the user for an address ahead of its first sign-in, with the same `walletAddress` and `account` rows, `resolveProfile` result, and wallet-derived email (`emailDomainName` or the placeholder) a sign-in would create. It never binds a caller email and creates no session. A later SIWS sign-in for the address claims the user.
-
-The endpoint is server-only: it is callable through `auth.api` but is not exposed over HTTP or in the OpenAPI schema.
-
-```ts
-import { getAddress } from "sign-in-with-stacks";
-
-const { user, walletAddress, chainId, created } = await auth.api.provisionUser({
-  body: { address: getAddress(signerAddress), chainId: 1 },
-});
-// user.id === walletAddress in address mode
-```
-
-`address` must be a valid Stacks address and `chainId` an integer between `1` and `4294967295`; otherwise the call fails with `400`. The call is idempotent: `created` is `true` only when the user was created by this call. Provisioning also works with the default `"generated"` strategy, in which case the user gets a generated id and a later sign-in finds it through its `walletAddress` row. The address-mode chain ID rule applies to provisioning too.
 
 Use `getAddress` from `sign-in-with-stacks` to normalize addresses exactly like the plugin before using them as user ids in your own tables.
 

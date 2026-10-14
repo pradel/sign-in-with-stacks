@@ -66,17 +66,11 @@ if (data) {
 
 ## User id = Stacks address
 
-Set `userIdStrategy: "address"` to make `user.id` the canonical Stacks address (one user per address, chain id fixed by the first sign-in). Use the server-only `auth.api.provisionUser` to create a user before its first sign-in; a later SIWS sign-in claims it.
+Set `userIdStrategy: "address"` to make `user.id` the canonical Stacks address (one user per address, chain id fixed by the first sign-in). Use `getAddress` to normalize addresses exactly like the plugin before using them as user ids.
 
 ```ts
-import { getAddress } from "sign-in-with-stacks";
-
 export const auth = betterAuth({
   plugins: [siws({ domain: "example.com", userIdStrategy: "address" })],
-});
-
-const { user, created } = await auth.api.provisionUser({
-  body: { address: getAddress(signerAddress), chainId: 1 },
 });
 ```
 

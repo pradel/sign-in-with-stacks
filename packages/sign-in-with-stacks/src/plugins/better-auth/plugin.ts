@@ -48,7 +48,7 @@ export interface SIWSPluginOptions {
     ((args: ResolveProfileArgs) => Promise<ResolveProfileResult>) | undefined;
   // Custom schema for the plugin's walletAddress table
   schema?: InferOptionSchema<typeof schema> | undefined;
-  // How user ids are assigned. "generated" (default) lets better-auth generate them. "address" makes `user.id` the canonical Stacks address: one user per address, with the chain id fixed by its first sign-in or provision
+  // How user ids are assigned. "generated" (default) lets better-auth generate them. "address" makes `user.id` the canonical Stacks address: one user per address, with the chain id fixed by its first sign-in
   userIdStrategy?: "generated" | "address" | undefined;
 }
 
@@ -126,7 +126,7 @@ export const siws = (options: SIWSPluginOptions) => {
     context: AuthContext,
     walletAddress: string,
     email: string | undefined,
-  ): Promise<{ user: User; created: boolean }> => {
+  ): Promise<User> => {
     const isAnon = options.anonymous ?? true;
     const normalizedEmail = email?.toLowerCase();
     const walletEmail = options.emailDomainName
@@ -176,12 +176,12 @@ export const siws = (options: SIWSPluginOptions) => {
           },
           { method: "siws" },
         );
-        return { user, created: true };
+        return user;
       } catch (error) {
-        // A concurrent sign-in or provision created the address user first.
+        // A concurrent sign-in created the address user first.
         if (userIdStrategy === "address") {
           const racedUser = await findUserById(context, walletAddress);
-          if (racedUser) return { user: racedUser, created: false };
+          if (racedUser) return racedUser;
         }
         throw error;
       }
@@ -276,7 +276,7 @@ export const siws = (options: SIWSPluginOptions) => {
     walletAddress: string,
     chainId: number,
     email: string | undefined,
-  ): Promise<{ user: User; created: boolean }> => {
+  ): Promise<User> => {
     const addressUser = await findUserById(context, walletAddress);
     if (addressUser) {
       await ensureAddressWallet(
@@ -285,16 +285,16 @@ export const siws = (options: SIWSPluginOptions) => {
         walletAddress,
         chainId,
       );
-      return { user: addressUser, created: false };
+      return addressUser;
     }
 
-    const result = await createWalletUser(context, walletAddress, email);
-    await ensureAddressWallet(context, result.user.id, walletAddress, chainId);
-    return result;
+    const user = await createWalletUser(context, walletAddress, email);
+    await ensureAddressWallet(context, user.id, walletAddress, chainId);
+    return user;
   };
 
   // Finds or creates the user owning `walletAddress`, including its
-  // walletAddress and siws account rows. Shared by verify and provisionUser.
+  // walletAddress and siws account rows.
   const resolveWalletUser = async (
     context: AuthContext,
     {
@@ -302,7 +302,7 @@ export const siws = (options: SIWSPluginOptions) => {
       chainId,
       email,
     }: { walletAddress: string; chainId: number; email: string | undefined },
-  ): Promise<{ user: User; created: boolean }> => {
+  ): Promise<User> => {
     if (userIdStrategy === "address") {
       return resolveAddressUser(context, walletAddress, chainId, email);
     }
@@ -361,17 +361,17 @@ export const siws = (options: SIWSPluginOptions) => {
           updatedAt: new Date(),
         });
       }
-      return { user, created: false };
+      return user;
     }
 
     // Create new user if none exists
-    const result = await createWalletUser(context, walletAddress, email);
+    const newUser = await createWalletUser(context, walletAddress, email);
 
     // Create wallet address record
     await context.adapter.create<WalletAddress>({
       model: "walletAddress",
       data: {
-        userId: result.user.id,
+        userId: newUser.id,
         address: walletAddress,
         chainId,
         isPrimary: true, // First address is primary
@@ -381,14 +381,14 @@ export const siws = (options: SIWSPluginOptions) => {
 
     // Create account record for wallet authentication
     await context.internalAdapter.createAccount({
-      userId: result.user.id,
+      userId: newUser.id,
       providerId: "siws",
       accountId: `${walletAddress}:${chainId}`,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    return result;
+    return newUser;
   };
 
   return {
@@ -549,7 +549,7 @@ export const siws = (options: SIWSPluginOptions) => {
               });
             }
 
-            const { user } = await resolveWalletUser(ctx.context, {
+            const user = await resolveWalletUser(ctx.context, {
               walletAddress,
               chainId,
               email,
@@ -585,36 +585,6 @@ export const siws = (options: SIWSPluginOptions) => {
               status: 401,
             });
           }
-        },
-      ),
-
-      provisionUser: createAuthEndpoint.serverOnly(
-        {
-          method: "POST",
-          body: z
-            .object({
-              address: z
-                .string()
-                .refine(isAddress, { message: "Invalid Stacks address." }),
-              chainId: z.number().int().min(1).max(SIWS_MAX_CHAIN_ID),
-            })
-            .strict(),
-        },
-        async (ctx) => {
-          const walletAddress = getAddress(ctx.body.address);
-          const { chainId } = ctx.body;
-          // Never binds a caller email: provisioning proves nothing about one.
-          const { user, created } = await resolveWalletUser(ctx.context, {
-            walletAddress,
-            chainId,
-            email: undefined,
-          });
-          return ctx.json({
-            user: { id: user.id },
-            walletAddress,
-            chainId,
-            created,
-          });
         },
       ),
     },
