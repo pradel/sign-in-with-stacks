@@ -1,5 +1,11 @@
 # sign-in-with-stacks
 
+## 0.4.1
+
+### Patch Changes
+
+- [#33](https://github.com/pradel/sign-in-with-stacks/pull/33) [`3f12ad5`](https://github.com/pradel/sign-in-with-stacks/commit/3f12ad5f6d63b0bf571befdb777ddff45d612f3c) Thanks [@pradel](https://github.com/pradel)! - Parse SIWS messages for addresses shorter than 40 characters. `parseSiwsMessage` only read addresses of 40 or 41 characters, but c32check addresses are shorter when their hash starts with zero bits, such as the 39-character addresses of about 1 in 256 wallets. Messages for those wallets had no address once parsed, so `verifySiwsMessage` returned `false` for valid signatures and the better-auth plugin rejected the sign-in.
+
 ## 0.4.0
 
 ### Minor Changes
