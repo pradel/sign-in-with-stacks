@@ -330,6 +330,28 @@ SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173
   `);
 });
 
+test("behavior: addresses shorter than 40 characters", () => {
+  // c32check addresses get shorter when their hash starts with zero bits:
+  // about 1 in 256 addresses has 39 characters, and the burn addresses 29.
+  const addresses = [
+    "STX4E0VZD1M4TKS53P5D8XPTQC6152KTTX9K68C",
+    "SP000000000000000000002Q6VF78",
+    "ST000000000000000000002AMW42H",
+  ];
+  const parsed = addresses.map(
+    (address) =>
+      parseSiwsMessage(`example.com wants you to sign in with your Stacks account:
+${address}
+
+URI: https://example.com/path
+Version: 1
+Chain ID: 1
+Nonce: foobarbaz
+Issued At: 2023-02-01T00:00:00.000Z`).address,
+  );
+  expect(parsed).toStrictEqual(addresses);
+});
+
 test("behavior: no prefix", () => {
   const message = `URI: https://example.com/path
 Version: 1
