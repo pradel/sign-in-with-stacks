@@ -9,4 +9,11 @@ export const accounts = [
     privateKey:
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   },
+  // Its hash starts with the byte 0x01, so c32check encodes it in 39
+  // characters, like about 1 in 256 addresses
+  {
+    address: "STX4E0VZD1M4TKS53P5D8XPTQC6152KTTX9K68C",
+    privateKey:
+      "c9184ab8c4f87ce2ceed798ef71b6db6c03f1ccd7a898acb7d71bd252ed7ab4601",
+  },
 ] as const;

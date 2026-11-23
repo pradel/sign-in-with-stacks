@@ -11,7 +11,7 @@ import { createSiwsMessage } from "../../createSiwsMessage.js";
 import { siws } from "./plugin.js";
 import type { SIWSVerifyMessageArgs } from "./types.js";
 
-const [account, otherAccount] = accounts;
+const [account, otherAccount, shortAddressAccount] = accounts;
 
 type TestAuth = Awaited<ReturnType<typeof createTestInstance>>;
 
@@ -216,6 +216,17 @@ describe("verify endpoint", () => {
     expect(res.token).toBeTypeOf("string");
     expect(res.user.walletAddress).toBe(account.address);
     expect(res.user.chainId).toBe(STACKS_TESTNET.chainId);
+  });
+
+  test("authenticates a wallet with a 39-character address", async () => {
+    const auth = await createTestInstance();
+    const res = await signIn(auth, {
+      address: shortAddressAccount.address,
+      privateKey: shortAddressAccount.privateKey,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.user.walletAddress).toBe(shortAddressAccount.address);
   });
 
   test("sets a session cookie usable for authenticated requests", async () => {

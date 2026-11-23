@@ -69,8 +69,11 @@ export function parseSiwsMessage(
 }
 
 // https://regexr.com/80gdj
+// The address has no fixed length: c32check addresses are shorter when their
+// hash starts with zero bits (39 characters for about 1 in 256, 29 for the
+// burn addresses). Callers check it with `isAddress`.
 const prefixRegex =
-  /^(?:(?<scheme>[a-zA-Z][a-zA-Z0-9+\-.]*):\/\/)?(?<domain>[a-zA-Z0-9+-.]*(?::[0-9]{1,5})?) (?:wants you to sign in with your Stacks account:\n)(?<address>S[A-Z0-9]{39,40})\n\n(?:(?<statement>.*)\n\n)?/;
+  /^(?:(?<scheme>[a-zA-Z][a-zA-Z0-9+\-.]*):\/\/)?(?<domain>[a-zA-Z0-9+-.]*(?::[0-9]{1,5})?) (?:wants you to sign in with your Stacks account:\n)(?<address>S[A-Z0-9]+)\n\n(?:(?<statement>.*)\n\n)?/;
 
 // https://regexr.com/80gf9
 const suffixRegex =
